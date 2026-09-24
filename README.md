@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🐉 DnD Helper
 
-## Getting Started
+Личный помощник мастера: монстры, заклинания и предметы (Open5e API) с фильтрами, избранное с заметками, PDF-книги с закладками.
+Next.js 16 (фронт + бэк в одном процессе) · SQLite (Drizzle ORM) · react-pdf · Docker.
 
-First, run the development server:
+## Запуск
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d --build     # первый запуск / после изменений кода
+docker compose up -d             # обычный запуск
+docker compose down              # выключить
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Открыть http://localhost:3000, ключ по умолчанию — `changeme`.
+Свой ключ: создай файл `.env` рядом с `docker-compose.yml`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+ACCESS_KEY=мой-секретный-ключ
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Все данные лежат в `./data` (`app.db` + `pdfs/`) — бэкап = скопировать папку.
 
-## Learn More
+## Разработка без Docker
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Без `ACCESS_KEY` в env вход не требует ключа. Данные пишутся в `./data`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Возможности
 
-## Deploy on Vercel
+| Раздел | Что умеет |
+|---|---|
+| 🔍 Монстры | Поиск по имени в Open5e (SRD + сторонние книги), фильтр «только 5e SRD», статблок в стиле книги |
+| ✨ Заклинания | ~2000 заклинаний: круг, класс, школа, время, концентрация, ритуал, спасбросок, тип урона, накладываемое состояние, источник. **Назначение**: лечение, воскрешение, урон, контроль, защита, снятие эффектов, призыв, перемещение, разведка, скрытность (определяется по тексту описания) |
+| 🗡️ Предметы | ~2800 обычных и магических предметов: категория, редкость, цена от/до, вес, настройка, тип урона оружия, источник, сортировка по цене/редкости |
+| ⭐ Избранное | Монстры, заклинания и предметы — копия записи в БД (работает офлайн) + заметки мастера |
+| 📚 Книги | Загрузка PDF любого размера (потоком на диск), просмотр с подгрузкой по Range |
+| 🔖 Закладки | Страница + название + теги; панель в вьюере и общий поиск по всем книгам |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Каталоги заклинаний и предметов скачиваются из Open5e v2 **один раз** при первом открытии вкладки (~5–10 с)
+и хранятся в SQLite — дальше фильтрация локальная и мгновенная, работает без интернета.
+Кнопка «↻ Обновить из Open5e» внизу панели фильтров перекачивает каталог.
+Фильтры живут в URL — удобный набор можно сохранить в закладки браузера.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+У магических предметов в API нет цены: используется оценка по редкости из Xanathar's Guide (≈).
+
+**Горячие клавиши в книге:** `←`/`→` листать · `B` новая закладка · `+`/`−` зум · `Home`/`End`.
+Текущая страница хранится в URL (`/books/1?page=42`) — можно добавить в закладки браузера.
+
+## Структура
+
+```
+src/
+  proxy.ts                     проверка ключа (cookie dnd_key)
+  lib/db/                      схема SQLite + подключение (таблицы создаются при старте)
+  lib/open5e.ts                клиент Open5e API (монстры, v1)
+  lib/catalog/                 каталоги Open5e v2: загрузка в SQLite, нормализация, фильтры
+    spells.ts                  фильтр заклинаний + определение «назначения» по тексту
+    items.ts                   фильтр предметов + оценка цены по редкости
+  app/actions.ts               server actions: избранное, закладки, книги, логин
+  app/api/books/upload         загрузка PDF (PUT, тело = файл)
+  app/api/books/[id]/file      отдача PDF с Range
+  app/monsters, spells, items, favorites, books, bookmarks   страницы
+  components/filters/          автоприменяемая форма фильтров и поля
+  components/BookViewer.tsx    PDF-вьюер + панель закладок
+```

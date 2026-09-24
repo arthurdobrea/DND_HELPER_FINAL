@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    container_name: dnd-helper
+    ports:
+      - "3000:3000"
+    environment:
+      # Ключ для входа. Пустой — вход без ключа.
+      - ACCESS_KEY=${ACCESS_KEY:-changeme}
+    volumes:
+      # SQLite (app.db) и загруженные PDF лежат здесь и переживают перезапуски
+      - ./data:/data
+    restart: unless-stopped
