@@ -1,18 +1,15 @@
-import { sqliteTable, integer, text, real, primaryKey, unique } from "drizzle-orm/sqlite-core";
+import { sqliteTable, integer, text, primaryKey } from "drizzle-orm/sqlite-core";
 
-export const favorites = sqliteTable("favorites", {
+/** Мир (кампания): у каждого свой набор закладок. */
+export const worlds = sqliteTable("worlds", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  source: text("source").notNull().default("open5e"),
-  slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
-  cr: real("cr"),
-  type: text("type"),
-  /** Полный JSON монстра — чтобы избранное работало без интернета. */
-  data: text("data").notNull(),
-  notes: text("notes").notNull().default(""),
+  description: text("description").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  openedAt: integer("opened_at", { mode: "timestamp" }).notNull(),
 });
 
+/** PDF-книги — общая библиотека для всех миров. */
 export const books = sqliteTable("books", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
@@ -21,15 +18,41 @@ export const books = sqliteTable("books", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
-export const bookmarks = sqliteTable("bookmarks", {
+export const ENTRY_KINDS = ["page", "spell", "item", "monster"] as const;
+export type EntryKind = (typeof ENTRY_KINDS)[number];
+
+/**
+ * Закладка мира: страница книги, заклинание, предмет или монстр.
+ * Для заклинаний/предметов/монстров в data лежит копия записи — работает офлайн
+ * и переживает обновление каталога.
+ */
+export const worldEntries = sqliteTable("world_entries", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  bookId: integer("book_id")
+  worldId: integer("world_id")
     .notNull()
-    .references(() => books.id, { onDelete: "cascade" }),
-  page: integer("page").notNull(),
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<EntryKind>().notNull(),
+  /** Ключ в каталоге (spell/item) или slug монстра; для страниц — пусто. */
+  ref: text("ref").notNull().default(""),
+  bookId: integer("book_id").references(() => books.id, { onDelete: "cascade" }),
+  page: integer("page"),
   title: text("title").notNull(),
   tags: text("tags").notNull().default(""),
+  notes: text("notes").notNull().default(""),
+  data: text("data"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Персонажи игроков мира. Лист целиком — JSON (см. lib/character.ts). */
+export const characters = sqliteTable("characters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  data: text("data").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 });
 
 /** Локальная копия каталогов Open5e (заклинания, предметы) — фильтрация идёт по ней. */
@@ -49,22 +72,7 @@ export const catalogMeta = sqliteTable("catalog_meta", {
   count: integer("count").notNull(),
 });
 
-/** Закреплённые заклинания и предметы (монстры — в favorites). */
-export const pins = sqliteTable(
-  "pins",
-  {
-    id: integer("id").primaryKey({ autoIncrement: true }),
-    kind: text("kind").notNull(),
-    key: text("key").notNull(),
-    name: text("name").notNull(),
-    data: text("data").notNull(),
-    notes: text("notes").notNull().default(""),
-    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
-  },
-  (t) => [unique().on(t.kind, t.key)],
-);
-
-export type Favorite = typeof favorites.$inferSelect;
+export type World = typeof worlds.$inferSelect;
 export type Book = typeof books.$inferSelect;
-export type Bookmark = typeof bookmarks.$inferSelect;
-export type Pin = typeof pins.$inferSelect;
+export type WorldEntry = typeof worldEntries.$inferSelect;
+export type Character = typeof characters.$inferSelect;

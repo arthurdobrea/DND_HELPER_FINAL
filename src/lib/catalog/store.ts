@@ -6,32 +6,39 @@ import { getDb, schema } from "@/lib/db";
  * Фильтрация идёт локально: мгновенно, офлайн и по признакам, которых нет в API.
  */
 
-const BASE = "https://api.open5e.com/v2";
+const V1 = "https://api.open5e.com/v1";
+const V2 = "https://api.open5e.com/v2";
 const PAGE_SIZE = 500;
 
-export type CatalogKind = "spells" | "items";
+export type CatalogKind = "spells" | "items" | "monsters";
 
-/** Какие эндпоинты входят в каталог. Предметы = обычное снаряжение + магические. */
-const SOURCES: Record<CatalogKind, { endpoint: string; tag?: string }[]> = {
-  spells: [{ endpoint: "spells" }],
+type Source = { base: string; endpoint: string; tag?: string; keyField?: string };
+
+/**
+ * Какие эндпоинты входят в каталог. Предметы = обычное снаряжение + магические.
+ * Монстры — из v1: формат записи совпадает с сохранёнными в мирах монстрами и статблоком.
+ */
+const SOURCES: Record<CatalogKind, Source[]> = {
+  spells: [{ base: V2, endpoint: "spells" }],
   items: [
-    { endpoint: "items", tag: "mundane" },
-    { endpoint: "magicitems", tag: "magic" },
+    { base: V2, endpoint: "items", tag: "mundane" },
+    { base: V2, endpoint: "magicitems", tag: "magic" },
   ],
+  monsters: [{ base: V1, endpoint: "monsters", keyField: "slug" }],
 };
 
 type Page = { count: number; results: Record<string, unknown>[] };
 
-async function fetchPage(endpoint: string, page: number): Promise<Page> {
-  const res = await fetch(`${BASE}/${endpoint}/?limit=${PAGE_SIZE}&page=${page}`, { cache: "no-store" });
+async function fetchPage({ base, endpoint }: Source, page: number): Promise<Page> {
+  const res = await fetch(`${base}/${endpoint}/?limit=${PAGE_SIZE}&page=${page}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Open5e ${endpoint}: ${res.status} ${res.statusText}`);
   return (await res.json()) as Page;
 }
 
-async function fetchAll(endpoint: string): Promise<Record<string, unknown>[]> {
-  const first = await fetchPage(endpoint, 1);
+async function fetchAll(source: Source): Promise<Record<string, unknown>[]> {
+  const first = await fetchPage(source, 1);
   const pages = Math.ceil(first.count / PAGE_SIZE);
-  const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(endpoint, i + 2)));
+  const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) => fetchPage(source, i + 2)));
   return [first, ...rest].flatMap((p) => p.results);
 }
 
@@ -40,7 +47,7 @@ export type RawEntry = Record<string, unknown> & { key: string; name: string; _s
 async function syncKind(kind: CatalogKind): Promise<void> {
   const lists = await Promise.all(
     SOURCES[kind].map(async (s) =>
-      (await fetchAll(s.endpoint)).map((r) => ({ ...r, _source: s.tag }) as RawEntry),
+      (await fetchAll(s)).map((r) => ({ ...r, key: s.keyField ? r[s.keyField] : r.key, _source: s.tag }) as RawEntry),
     ),
   );
   const rows = lists.flat();

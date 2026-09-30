@@ -50,43 +50,6 @@ export type Monster = {
   document__title?: string;
 };
 
-export type MonsterSummary = Pick<
-  Monster,
-  "slug" | "name" | "size" | "type" | "cr" | "challenge_rating" | "hit_points" | "armor_class" | "document__title"
->;
-
-const SUMMARY_FIELDS =
-  "slug,name,size,type,cr,challenge_rating,hit_points,armor_class,document__title";
-
-export type SearchOptions = {
-  query: string;
-  /** Только 5e SRD (официальные правила) */
-  srdOnly?: boolean;
-  page?: number;
-};
-
-export type SearchResult = {
-  count: number;
-  results: MonsterSummary[];
-  hasMore: boolean;
-};
-
-export async function searchMonsters({ query, srdOnly, page = 1 }: SearchOptions): Promise<SearchResult> {
-  const params = new URLSearchParams({
-    name__icontains: query,
-    fields: SUMMARY_FIELDS,
-    ordering: "name",
-    limit: "50",
-    page: String(page),
-  });
-  if (srdOnly) params.set("document__slug", "wotc-srd");
-
-  const res = await fetch(`${BASE}/monsters/?${params}`, { next: { revalidate: 3600 } });
-  if (!res.ok) throw new Error(`Open5e: ${res.status} ${res.statusText}`);
-  const json = (await res.json()) as { count: number; next: string | null; results: MonsterSummary[] };
-  return { count: json.count, results: json.results, hasMore: json.next !== null };
-}
-
 export async function getMonster(slug: string): Promise<Monster | null> {
   const res = await fetch(`${BASE}/monsters/${encodeURIComponent(slug)}/`, { next: { revalidate: 86400 } });
   if (res.status === 404) return null;

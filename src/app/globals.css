@@ -54,3 +54,55 @@ body {
     @apply rounded bg-panel-2 px-1.5 py-0.5 text-xs text-muted;
   }
 }
+
+/* ---------- Лист персонажа (A4) ---------- */
+@layer components {
+  .sheet-page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 9mm;
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    box-shadow: 0 10px 40px rgb(0 0 0 / 0.5);
+    font-size: 12px;
+    line-height: 1.25;
+  }
+  .sheet-box {
+    @apply rounded-lg border-[1.5px] border-[#3b2f22] bg-white/45;
+  }
+  .sheet-label {
+    @apply block text-center text-[8.5px] font-bold uppercase tracking-wider text-[#5a4a38];
+  }
+  .sheet-input {
+    @apply w-full border-b border-[#8a7a66] bg-transparent px-0.5 py-0.5 outline-none focus:border-[var(--sb-rule)] focus:bg-white/60;
+  }
+  .sheet-area {
+    @apply w-full flex-1 resize-none bg-transparent p-1 text-[11px] leading-snug outline-none focus:bg-white/60;
+  }
+  .sheet-step {
+    @apply flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded border border-[#8a7a66] text-[11px] leading-none text-[#3b2f22] select-none hover:border-[var(--sb-rule)] hover:bg-[var(--sb-rule)] hover:text-white print:hidden;
+  }
+  .sheet-dot {
+    @apply inline-flex h-3 w-3 shrink-0 cursor-pointer items-center justify-center rounded-full border-[1.5px] border-[#3b2f22];
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  html,
+  body {
+    background: white !important;
+  }
+  header,
+  .no-print {
+    display: none !important;
+  }
+  .sheet-page {
+    box-shadow: none;
+    margin: 0 !important;
+    break-after: page;
+  }
+}

@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { getDb, schema } from "@/lib/db";
+import { entryRefs, findEntry, requireWorld } from "@/lib/world";
 import { catalogInfo, getSpells, sourceOptions, type Spell } from "@/lib/catalog";
 import { ABILITIES, CASTING_TIMES, CLASSES, CONDITIONS, DAMAGE_TYPES, SCHOOLS, label } from "@/lib/catalog/labels";
 import { SPELL_EFFECTS, filterSpells, parseSpellFilter, spellLevelLabel } from "@/lib/catalog/spells";
 import { hrefWith } from "@/lib/url";
-import { resyncCatalog, savePinNotes, togglePin } from "@/app/actions";
+import { resyncCatalog, saveEntryNotes, toggleEntry } from "@/app/actions";
 import { AutoForm } from "@/components/filters/AutoForm";
 import { Check, Chips, Field, Select, TriState, toOptions } from "@/components/filters/fields";
 import { CatalogLayout } from "@/components/CatalogLayout";
@@ -20,6 +19,7 @@ const LEVELS = Array.from({ length: 10 }, (_, l) => ({ value: String(l), label: 
 
 export default async function SpellsPage({ searchParams }: PageProps<"/spells">) {
   await connection();
+  const world = await requireWorld();
   const sp = await searchParams;
   const f = parseSpellFilter(sp);
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
@@ -32,18 +32,13 @@ export default async function SpellsPage({ searchParams }: PageProps<"/spells">)
     return <p className="p-8 text-center text-red-400">Не удалось загрузить каталог заклинаний: {String(e)}</p>;
   }
   const found = filterSpells(all, f);
-  const db = getDb();
-  const pinned = new Set(
-    db.select({ key: schema.pins.key }).from(schema.pins).where(eq(schema.pins.kind, "spells")).all().map((p) => p.key),
-  );
+  const pinned = entryRefs(world.id, "spell");
   const { systems, books } = sourceOptions(all);
   const meta = catalogInfo("spells");
 
   // Карточка: из каталога, а если запись пропала после обновления — из копии в избранном.
-  const pin = openKey
-    ? db.select().from(schema.pins).where(and(eq(schema.pins.kind, "spells"), eq(schema.pins.key, openKey))).get()
-    : undefined;
-  const open = openKey ? (all.find((s) => s.key === openKey) ?? (pin ? (JSON.parse(pin.data) as Spell) : null)) : null;
+  const pin = openKey ? findEntry(world.id, "spell", openKey) : undefined;
+  const open = openKey ? (all.find((s) => s.key === openKey) ?? (pin?.data ? (JSON.parse(pin.data) as Spell) : null)) : null;
 
   const filters = (
     <>
@@ -157,8 +152,8 @@ export default async function SpellsPage({ searchParams }: PageProps<"/spells">)
   const detail = open ? (
     <div className="space-y-3">
       <SpellCard s={open} />
-      <PinButton pinned={pinned.has(open.key)} toggle={togglePin.bind(null, "spells", open.key)} />
-      {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={savePinNotes.bind(null, "spells", open.key)} />}
+      <PinButton pinned={pinned.has(open.key)} toggle={toggleEntry.bind(null, "spell", open.key)} />
+      {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>
   ) : (
     <p className="mt-10 text-center text-sm text-muted">Выберите заклинание из списка</p>

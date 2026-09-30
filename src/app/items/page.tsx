@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { and, eq } from "drizzle-orm";
-import { getDb, schema } from "@/lib/db";
+import { entryRefs, findEntry, requireWorld } from "@/lib/world";
 import { catalogInfo, getItems, sourceOptions, type Item } from "@/lib/catalog";
 import { DAMAGE_TYPES, ITEM_CATEGORIES, RARITIES, label } from "@/lib/catalog/labels";
 import { filterItems, formatPrice, parseItemFilter } from "@/lib/catalog/items";
 import { hrefWith } from "@/lib/url";
-import { resyncCatalog, savePinNotes, togglePin } from "@/app/actions";
+import { resyncCatalog, saveEntryNotes, toggleEntry } from "@/app/actions";
 import { AutoForm } from "@/components/filters/AutoForm";
 import { Check, Field, Select, TriState, toOptions } from "@/components/filters/fields";
 import { CatalogLayout } from "@/components/CatalogLayout";
@@ -28,6 +27,7 @@ const RARITY_COLORS: Record<string, string> = {
 
 export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
   await connection();
+  const world = await requireWorld();
   const sp = await searchParams;
   const f = parseItemFilter(sp);
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
@@ -40,20 +40,15 @@ export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
     return <p className="p-8 text-center text-red-400">Не удалось загрузить каталог предметов: {String(e)}</p>;
   }
   const found = filterItems(all, f);
-  const db = getDb();
-  const pinned = new Set(
-    db.select({ key: schema.pins.key }).from(schema.pins).where(eq(schema.pins.kind, "items")).all().map((p) => p.key),
-  );
+  const pinned = entryRefs(world.id, "item");
   const { systems, books } = sourceOptions(all);
   const categories = [...new Set(all.map((i) => i.category))].sort((a, b) =>
     label(ITEM_CATEGORIES, a).localeCompare(label(ITEM_CATEGORIES, b), "ru"),
   );
   const meta = catalogInfo("items");
 
-  const pin = openKey
-    ? db.select().from(schema.pins).where(and(eq(schema.pins.kind, "items"), eq(schema.pins.key, openKey))).get()
-    : undefined;
-  const open = openKey ? (all.find((i) => i.key === openKey) ?? (pin ? (JSON.parse(pin.data) as Item) : null)) : null;
+  const pin = openKey ? findEntry(world.id, "item", openKey) : undefined;
+  const open = openKey ? (all.find((i) => i.key === openKey) ?? (pin?.data ? (JSON.parse(pin.data) as Item) : null)) : null;
 
   const filters = (
     <>
@@ -179,8 +174,8 @@ export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
   const detail = open ? (
     <div className="space-y-3">
       <ItemCard i={open} />
-      <PinButton pinned={pinned.has(open.key)} toggle={togglePin.bind(null, "items", open.key)} />
-      {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={savePinNotes.bind(null, "items", open.key)} />}
+      <PinButton pinned={pinned.has(open.key)} toggle={toggleEntry.bind(null, "item", open.key)} />
+      {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>
   ) : (
     <p className="mt-10 text-center text-sm text-muted">Выберите предмет из списка</p>

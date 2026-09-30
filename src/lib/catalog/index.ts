@@ -1,9 +1,17 @@
 import { buildItems, type Item } from "./items";
+import { buildMonsterFacets, buildMonsters, type MonsterEntry, type RawMonster } from "./monsters";
 import { buildSpells, type Spell } from "./spells";
-import { getDerived, getMeta, type CatalogKind } from "./store";
+import { getDerived, getMeta, getRaw, type CatalogKind } from "./store";
 
 export const getSpells = () => getDerived("spells", buildSpells);
 export const getItems = () => getDerived("items", buildItems);
+export const getMonsters = () => getDerived("monsters", buildMonsters);
+export const getMonsterFacets = async () => buildMonsterFacets(await getMonsters());
+
+/** Полная запись монстра в формате статблока. */
+export async function getMonsterRaw(key: string): Promise<RawMonster | undefined> {
+  return (await getRaw("monsters")).find((r) => r.key === key) as RawMonster | undefined;
+}
 
 export type SourceOption = { value: string; label: string; count: number };
 
@@ -33,4 +41,4 @@ export function catalogInfo(kind: CatalogKind) {
   return getMeta(kind);
 }
 
-export type { Spell, Item, CatalogKind };
+export type { Spell, Item, MonsterEntry, RawMonster, CatalogKind };
