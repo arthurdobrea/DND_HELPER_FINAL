@@ -58,6 +58,13 @@ CREATE TABLE IF NOT EXISTS shop_items (
   created_at INTEGER NOT NULL,
   UNIQUE (world_id, item_key)
 );
+CREATE TABLE IF NOT EXISTS translations_ru (
+  hash TEXT PRIMARY KEY,
+  src TEXT NOT NULL,
+  ru TEXT NOT NULL,
+  model TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS catalog (
   kind TEXT NOT NULL,
   key TEXT NOT NULL,

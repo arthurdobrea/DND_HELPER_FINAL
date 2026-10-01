@@ -121,7 +121,7 @@ function normalizeSpell(r: RawSpell): Spell {
   for (const m of text.matchAll(CONDITION_RE)) {
     // «can't be charmed», «immune to being frightened» — защита, а не наложение состояния.
     const before = text.slice(Math.max(0, m.index - 24), m.index + m[0].length);
-    if (/(?:can't|cannot|can not|immune|n't|not|no longer|advantage on saving throws against being)[^.]*$/.test(before)) continue;
+    if (/(?:can't|cannot|can not|immune|n't|not|no longer|advantage on saving throws against being)\b[^.]*$/.test(before)) continue;
     conditions.add(m[1] ?? m[2]);
   }
 

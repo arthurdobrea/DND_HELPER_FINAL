@@ -11,6 +11,9 @@ import { addShopItems, clearShop, toggleShopItem } from "@/app/actions";
 import { AutoForm } from "@/components/filters/AutoForm";
 import { Check, Field, Select, toOptions } from "@/components/filters/fields";
 import { ItemCard } from "@/components/ItemCard";
+import { AutoTranslate } from "@/components/translate/AutoTranslate";
+import { TranslationBar } from "@/components/translate/TranslationBar";
+import { localize, localizeMany, parseLang } from "@/lib/translate/view";
 import { ShopRow } from "@/components/shop/ShopRow";
 import { AddAllButton, ClearShopButton, ShopDetailButton, ShopToggle } from "@/components/shop/ShopButtons";
 
@@ -50,7 +53,11 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
       label(ITEM_CATEGORIES, a.item.category).localeCompare(label(ITEM_CATEGORIES, b.item.category), "ru") ||
       a.item.name.localeCompare(b.item.name),
   );
-  const groups = Map.groupBy(shelf, (s) => s.item.category);
+  // Названия и описания на полке — русские, если перевод уже есть в кэше; недостающее переводится в фоне.
+  const lang = parseLang(sp.lang);
+  const shopLoc = localizeMany("item", shelf.map((s) => s.item), lang);
+  const shelfLoc = shelf.map((s, i) => ({ row: s.row, item: shopLoc.entries[i] }));
+  const groups = Map.groupBy(shelfLoc, (s) => s.item.category);
 
   const totalValue = rows.reduce((sum, r) => sum + (r.price ?? 0) * (r.qty ?? 0), 0);
   const hasUnlimited = rows.some((r) => r.qty === null);
@@ -170,12 +177,12 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
           (inStockCount > 0 ? (
             // Обычная ссылка (не next/link): это скачивание файла, а не переход между страницами.
             <a
-              href="/api/shop/pdf"
+              href={`/api/shop/pdf?lang=${lang}`}
               download
               className="btn"
-              title={`В PDF попадут вещи в наличии (${inStockCount}): название, цена и описание списком`}
+              title={`В PDF попадут вещи в наличии (${inStockCount}): название, цена и описание списком. Язык — как переключатель RU/EN ниже`}
             >
-              📄 Экспорт в PDF
+              📄 Экспорт в PDF{lang === "en" ? " (EN)" : ""}
             </a>
           ) : (
             <span className="btn cursor-not-allowed opacity-50" title="Все вещи закончились — экспортировать нечего">
@@ -184,6 +191,18 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
           ))}
         {rows.length > 0 && <ClearShopButton clear={clearShop} />}
       </div>
+
+      {rows.length > 0 && (
+        <div className="mt-3">
+          <TranslationBar
+            lang={lang}
+            hrefRu={hrefWith("/shop", sp, { lang: null })}
+            hrefEn={hrefWith("/shop", sp, { lang: "en" })}
+            missing={shopLoc.missing}
+            enabled={shopLoc.enabled}
+          />
+        </div>
+      )}
 
       {rows.length === 0 ? (
         <div className="mt-10 text-center text-muted">
@@ -220,11 +239,16 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
     </section>
   );
 
+  const openLoc = openItem ? localize("item", openItem, lang) : null;
   const detail = (
     <section className="border-border p-3 lg:overflow-y-auto lg:border-l">
-      {openItem ? (
+      {openItem && openLoc ? (
         <div className="space-y-3">
-          <ItemCard i={openItem} />
+          {/* Вещи из магазина переводит панель над полкой; здесь — только для вещи из каталога, которой в магазине нет */}
+          {lang === "ru" && openLoc.enabled && openLoc.missing.length > 0 && !inShop.has(openItem.key) && (
+            <AutoTranslate texts={openLoc.missing} />
+          )}
+          <ItemCard i={openLoc.entry} />
           <ShopDetailButton inShop={inShop.has(openItem.key)} toggle={toggleShopItem.bind(null, openItem.key)} />
         </div>
       ) : (

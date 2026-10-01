@@ -1,4 +1,6 @@
 import { abilityMod, formatSpeed, type Monster, type NamedDesc } from "@/lib/open5e";
+import { ABILITY_SHORT_RU, STAT_LABELS, creatureLineRu, formatSpeedRu, skillRu } from "@/lib/translate/static";
+import type { Lang } from "@/lib/translate/view";
 import { RichText } from "./RichText";
 
 const ABILITIES = [
@@ -9,6 +11,26 @@ const ABILITIES = [
   ["WIS", "wisdom"],
   ["CHA", "charisma"],
 ] as const;
+
+const EN_LABELS = {
+  ac: "Armor Class",
+  hp: "Hit Points",
+  speed: "Speed",
+  saves: "Saving Throws",
+  skills: "Skills",
+  vulnerabilities: "Damage Vulnerabilities",
+  resistances: "Damage Resistances",
+  immunities: "Damage Immunities",
+  conditionImmunities: "Condition Immunities",
+  senses: "Senses",
+  languages: "Languages",
+  challenge: "Challenge",
+  actions: "Actions",
+  bonusActions: "Bonus Actions",
+  reactions: "Reactions",
+  legendaryActions: "Legendary Actions",
+  source: "Source",
+};
 
 function Rule() {
   return <div className="my-2 h-[3px] bg-gradient-to-r from-[var(--sb-rule)] to-transparent" />;
@@ -40,34 +62,46 @@ function Section({ title, items, intro }: { title: string; items?: NamedDesc[] |
   );
 }
 
-export function StatBlock({ m }: { m: Monster }) {
+/**
+ * Статблок монстра. lang="ru" — подписи по-русски (тексты способностей приходят уже переведёнными
+ * из localize(), если перевод есть в кэше).
+ */
+export function StatBlock({ m, lang = "ru" }: { m: Monster; lang?: Lang }) {
+  const ru = lang === "ru";
+  const L = ru ? STAT_LABELS : EN_LABELS;
   const saves = ABILITIES.map(([label, key]) => {
     const v = m[`${key}_save` as keyof Monster] as number | null | undefined;
-    return v != null ? `${label} ${v >= 0 ? "+" : ""}${v}` : null;
+    return v != null ? `${ru ? ABILITY_SHORT_RU[key] : label} ${v >= 0 ? "+" : ""}${v}` : null;
   })
     .filter(Boolean)
     .join(", ");
   const skills = Object.entries(m.skills ?? {})
-    .map(([k, v]) => `${k[0].toUpperCase()}${k.slice(1)} ${v >= 0 ? "+" : ""}${v}`)
+    .map(([k, v]) => `${ru ? skillRu(k) : `${k[0].toUpperCase()}${k.slice(1)}`} ${v >= 0 ? "+" : ""}${v}`)
     .join(", ");
 
   return (
     <article className="rounded-md bg-[var(--sb-bg)] p-5 text-[15px] leading-snug text-[var(--sb-text)] shadow-xl">
       <h2 className="font-display text-3xl font-bold text-[var(--sb-rule)]">{m.name}</h2>
       <p className="italic">
-        {m.size} {m.type.toLowerCase()}
-        {m.subtype ? ` (${m.subtype})` : ""}
-        {m.alignment ? `, ${m.alignment}` : ""}
+        {ru ? (
+          creatureLineRu(m)
+        ) : (
+          <>
+            {m.size} {m.type.toLowerCase()}
+            {m.subtype ? ` (${m.subtype})` : ""}
+            {m.alignment ? `, ${m.alignment}` : ""}
+          </>
+        )}
       </p>
       <Rule />
-      <Line label="Armor Class" value={`${m.armor_class}${m.armor_desc ? ` (${m.armor_desc})` : ""}`} />
-      <Line label="Hit Points" value={`${m.hit_points}${m.hit_dice ? ` (${m.hit_dice})` : ""}`} />
-      <Line label="Speed" value={formatSpeed(m.speed)} />
+      <Line label={L.ac} value={`${m.armor_class}${m.armor_desc ? ` (${m.armor_desc})` : ""}`} />
+      <Line label={L.hp} value={`${m.hit_points}${m.hit_dice ? ` (${m.hit_dice})` : ""}`} />
+      <Line label={L.speed} value={ru ? formatSpeedRu(m.speed) : formatSpeed(m.speed)} />
       <Rule />
       <div className="grid grid-cols-6 text-center">
         {ABILITIES.map(([label, key]) => (
           <div key={key}>
-            <div className="font-bold text-[var(--sb-rule)]">{label}</div>
+            <div className="font-bold text-[var(--sb-rule)]">{ru ? ABILITY_SHORT_RU[key] : label}</div>
             <div>
               {m[key]} ({abilityMod(m[key])})
             </div>
@@ -75,15 +109,15 @@ export function StatBlock({ m }: { m: Monster }) {
         ))}
       </div>
       <Rule />
-      <Line label="Saving Throws" value={saves} />
-      <Line label="Skills" value={skills} />
-      <Line label="Damage Vulnerabilities" value={m.damage_vulnerabilities} />
-      <Line label="Damage Resistances" value={m.damage_resistances} />
-      <Line label="Damage Immunities" value={m.damage_immunities} />
-      <Line label="Condition Immunities" value={m.condition_immunities} />
-      <Line label="Senses" value={m.senses} />
-      <Line label="Languages" value={m.languages || "—"} />
-      <Line label="Challenge" value={m.challenge_rating} />
+      <Line label={L.saves} value={saves} />
+      <Line label={L.skills} value={skills} />
+      <Line label={L.vulnerabilities} value={m.damage_vulnerabilities} />
+      <Line label={L.resistances} value={m.damage_resistances} />
+      <Line label={L.immunities} value={m.damage_immunities} />
+      <Line label={L.conditionImmunities} value={m.condition_immunities} />
+      <Line label={L.senses} value={m.senses} />
+      <Line label={L.languages} value={m.languages || "—"} />
+      <Line label={L.challenge} value={m.challenge_rating} />
       <Rule />
 
       {m.special_abilities?.length ? (
@@ -97,12 +131,16 @@ export function StatBlock({ m }: { m: Monster }) {
         </div>
       ) : null}
 
-      <Section title="Actions" items={m.actions} />
-      <Section title="Bonus Actions" items={m.bonus_actions} />
-      <Section title="Reactions" items={m.reactions} />
-      <Section title="Legendary Actions" items={m.legendary_actions} intro={m.legendary_desc} />
+      <Section title={L.actions} items={m.actions} />
+      <Section title={L.bonusActions} items={m.bonus_actions} />
+      <Section title={L.reactions} items={m.reactions} />
+      <Section title={L.legendaryActions} items={m.legendary_actions} intro={m.legendary_desc} />
 
-      {m.document__title && <p className="mt-4 text-xs italic opacity-60">Источник: {m.document__title}</p>}
+      {m.document__title && (
+        <p className="mt-4 text-xs italic opacity-60">
+          {L.source}: {m.document__title}
+        </p>
+      )}
     </article>
   );
 }

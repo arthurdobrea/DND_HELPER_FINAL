@@ -98,6 +98,18 @@ export const catalogMeta = sqliteTable("catalog_meta", {
   count: integer("count").notNull(),
 });
 
+/**
+ * Кэш автоперевода «английский текст → русский». Ключ — sha256 исходного текста:
+ * одинаковые тексты (например, «A battleaxe.» у десятков предметов) переводятся один раз.
+ */
+export const translationsRu = sqliteTable("translations_ru", {
+  hash: text("hash").primaryKey(),
+  src: text("src").notNull(),
+  ru: text("ru").notNull(),
+  model: text("model").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
 export type World = typeof worlds.$inferSelect;
 export type Book = typeof books.$inferSelect;
 export type WorldEntry = typeof worldEntries.$inferSelect;

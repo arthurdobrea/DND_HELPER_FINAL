@@ -13,6 +13,8 @@ import { CatalogSync } from "@/components/CatalogSync";
 import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
 import { SpellCard } from "@/components/SpellCard";
+import { TranslationBar } from "@/components/translate/TranslationBar";
+import { localize, parseLang } from "@/lib/translate/view";
 
 const PAGE = 100;
 const LEVELS = Array.from({ length: 10 }, (_, l) => ({ value: String(l), label: spellLevelLabel(l) }));
@@ -22,6 +24,7 @@ export default async function SpellsPage({ searchParams }: PageProps<"/spells">)
   const world = await requireWorld();
   const sp = await searchParams;
   const f = parseSpellFilter(sp);
+  const lang = parseLang(sp.lang);
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
   const openKey = typeof sp.open === "string" ? sp.open : "";
 
@@ -149,9 +152,17 @@ export default async function SpellsPage({ searchParams }: PageProps<"/spells">)
     </>
   );
 
-  const detail = open ? (
+  const loc = open ? localize("spell", open, lang) : null;
+  const detail = open && loc ? (
     <div className="space-y-3">
-      <SpellCard s={open} />
+      <TranslationBar
+        lang={lang}
+        hrefRu={hrefWith("/spells", sp, { lang: null })}
+        hrefEn={hrefWith("/spells", sp, { lang: "en" })}
+        missing={loc.missing}
+        enabled={loc.enabled}
+      />
+      <SpellCard s={loc.entry} />
       <PinButton pinned={pinned.has(open.key)} toggle={toggleEntry.bind(null, "spell", open.key)} />
       {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>

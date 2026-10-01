@@ -26,6 +26,8 @@ import { CatalogSync } from "@/components/CatalogSync";
 import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
 import { StatBlock } from "@/components/StatBlock";
+import { TranslationBar } from "@/components/translate/TranslationBar";
+import { localize, parseLang } from "@/lib/translate/view";
 
 const PAGE = 100;
 
@@ -40,6 +42,7 @@ export default async function MonstersPage({ searchParams }: PageProps<"/monster
   const world = await requireWorld();
   const sp = await searchParams;
   const f = parseMonsterFilter(sp);
+  const lang = parseLang(sp.lang);
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
   const openKey = typeof sp.open === "string" ? sp.open : "";
 
@@ -241,13 +244,21 @@ export default async function MonstersPage({ searchParams }: PageProps<"/monster
     </>
   );
 
-  const detail = open ? (
+  const loc = open ? localize("monster", open, lang) : null;
+  const detail = open && loc ? (
     <div className="space-y-3">
-      <StatBlock m={open} />
-      {open.desc && (
+      <TranslationBar
+        lang={lang}
+        hrefRu={hrefWith("/monsters", sp, { lang: null })}
+        hrefEn={hrefWith("/monsters", sp, { lang: "en" })}
+        missing={loc.missing}
+        enabled={loc.enabled}
+      />
+      <StatBlock m={loc.entry} lang={lang} />
+      {loc.entry.desc && (
         <details className="card p-4 text-sm">
           <summary className="cursor-pointer text-muted">Описание / лор</summary>
-          <div className="mt-2 whitespace-pre-line">{open.desc}</div>
+          <div className="mt-2 whitespace-pre-line">{loc.entry.desc.replace(/\\n/g, "\n")}</div>
         </details>
       )}
       <PinButton pinned={pinned.has(openKey)} toggle={toggleEntry.bind(null, "monster", openKey)} />

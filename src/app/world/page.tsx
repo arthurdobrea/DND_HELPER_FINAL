@@ -16,6 +16,9 @@ import { NotesEditor } from "@/components/NotesEditor";
 import { SpellCard } from "@/components/SpellCard";
 import { ItemCard } from "@/components/ItemCard";
 import { StatBlock } from "@/components/StatBlock";
+import { TranslationBar } from "@/components/translate/TranslationBar";
+import { localize, parseLang } from "@/lib/translate/view";
+import { hrefWith } from "@/lib/url";
 
 const KIND_ORDER = { page: 0, spell: 1, item: 2, monster: 3 } as const;
 
@@ -45,7 +48,9 @@ function subtitle(e: WorldEntry, bookTitles: Map<number, string>): string {
 export default async function WorldPage({ searchParams }: PageProps<"/world">) {
   await connection();
   const world = await requireWorld();
-  const { e } = await searchParams;
+  const sp = await searchParams;
+  const { e } = sp;
+  const lang = parseLang(sp.lang);
 
   const bookTitles = new Map(
     getDb().select({ id: schema.books.id, title: schema.books.title }).from(schema.books).all().map((b) => [b.id, b.title]),
@@ -100,21 +105,41 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
     } else {
       // Заклинания/предметы — свежая версия из каталога, если есть; иначе сохранённая копия.
       let card: React.ReactNode = null;
+      let missing: string[] = [];
+      let enabled = false;
       if (selected.kind === "spell") {
         const s = (await getSpells().catch(() => [])).find((x) => x.key === selected.ref) ?? parse<Spell>(selected);
-        card = s && <SpellCard s={s} />;
+        const loc = s && localize("spell", s, lang);
+        if (loc) ({ missing, enabled } = loc);
+        card = loc && <SpellCard s={loc.entry} />;
       } else if (selected.kind === "item") {
         const i = (await getItems().catch(() => [])).find((x) => x.key === selected.ref) ?? parse<Item>(selected);
-        card = i && <ItemCard i={i} />;
+        const loc = i && localize("item", i, lang);
+        if (loc) ({ missing, enabled } = loc);
+        card = loc && <ItemCard i={loc.entry} />;
       } else {
         const m = parse<Monster>(selected);
-        card = m && <StatBlock m={m} />;
+        const loc = m && localize("monster", m, lang);
+        if (loc) ({ missing, enabled } = loc);
+        card = loc && <StatBlock m={loc.entry} lang={lang} />;
       }
+      const bar = card && (
+        <TranslationBar
+          lang={lang}
+          hrefRu={hrefWith("/world", sp, { lang: null })}
+          hrefEn={hrefWith("/world", sp, { lang: "en" })}
+          missing={missing}
+          enabled={enabled}
+        />
+      );
       detail = (
         <div className="h-full overflow-y-auto">
           {header}
           <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div>{card ?? <p className="text-red-400">Нет данных записи</p>}</div>
+            <div className="space-y-3">
+              {bar}
+              {card ?? <p className="text-red-400">Нет данных записи</p>}
+            </div>
             <div className="space-y-3">{notes}</div>
           </div>
         </div>

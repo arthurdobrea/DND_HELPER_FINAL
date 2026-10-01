@@ -5,9 +5,13 @@ import type { Item } from "@/lib/catalog";
 import { DAMAGE_TYPES, ITEM_CATEGORIES, RARITIES, label } from "@/lib/catalog/labels";
 import { formatPrice } from "@/lib/catalog/items";
 import { buildShopPdf, type ShopPdfItem } from "@/lib/shop-pdf";
+import { translationEnabled } from "@/lib/translate/engine";
+import { collectTexts } from "@/lib/translate/segments";
+import { ensureTranslated } from "@/lib/translate/store";
+import { localizeMany, parseLang } from "@/lib/translate/view";
 
 /** PDF-прайс магазина текущего мира: список «название — цена — описание». Вещи «нет в наличии» не попадают. */
-export async function GET() {
+export async function GET(request: Request) {
   const world = await getCurrentWorld();
   if (!world) return Response.json({ error: "Сначала выберите мир" }, { status: 400 });
 
@@ -20,8 +24,23 @@ export async function GET() {
     .filter((r) => r.qty !== 0);
   if (rows.length === 0) return Response.json({ error: "В магазине нет вещей в наличии" }, { status: 400 });
 
-  const items: ShopPdfItem[] = rows.map((r) => {
-    const item = JSON.parse(r.data) as Item;
+  // Язык PDF: по умолчанию русский. Недостающий перевод дозаказываем здесь же — к моменту сборки он уже в кэше.
+  const lang = parseLang(new URL(request.url).searchParams.get("lang") ?? undefined);
+  const sources = rows.map((r) => JSON.parse(r.data) as Item);
+  let translationNote: string | null = null;
+  if (lang === "ru" && translationEnabled()) {
+    try {
+      await ensureTranslated(sources.flatMap((i) => collectTexts("item", i)));
+    } catch (e) {
+      // Часть текстов не перевелась — отдаём PDF с тем, что есть (остальное на английском).
+      translationNote = e instanceof Error ? e.message : "ошибка перевода";
+      console.error("[shop-pdf] перевод не завершён:", translationNote);
+    }
+  }
+  const localized = localizeMany("item", sources, lang).entries;
+
+  const items: ShopPdfItem[] = rows.map((r, idx) => {
+    const item = localized[idx];
     const meta = [
       item.rarity && label(RARITIES, item.rarity),
       item.attunement && "требует настройки",
@@ -38,7 +57,7 @@ export async function GET() {
       .filter(Boolean)
       .join(" · ");
     return {
-      name: r.name,
+      name: item.name,
       category: label(ITEM_CATEGORIES, item.category),
       meta,
       stats,
@@ -57,6 +76,7 @@ export async function GET() {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="shop.pdf"; filename*=UTF-8''${encodeURIComponent(fileName)}.pdf`,
       "Cache-Control": "no-store",
+      ...(translationNote ? { "X-Translation-Warning": "incomplete" } : {}),
     },
   });
 }

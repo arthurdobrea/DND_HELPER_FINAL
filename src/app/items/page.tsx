@@ -11,6 +11,8 @@ import { Check, Field, Select, TriState, toOptions } from "@/components/filters/
 import { CatalogLayout } from "@/components/CatalogLayout";
 import { CatalogSync } from "@/components/CatalogSync";
 import { ItemCard } from "@/components/ItemCard";
+import { TranslationBar } from "@/components/translate/TranslationBar";
+import { localize, parseLang } from "@/lib/translate/view";
 import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
 
@@ -21,6 +23,7 @@ export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
   const world = await requireWorld();
   const sp = await searchParams;
   const f = parseItemFilter(sp);
+  const lang = parseLang(sp.lang);
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
   const openKey = typeof sp.open === "string" ? sp.open : "";
 
@@ -162,9 +165,17 @@ export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
     </>
   );
 
-  const detail = open ? (
+  const loc = open ? localize("item", open, lang) : null;
+  const detail = open && loc ? (
     <div className="space-y-3">
-      <ItemCard i={open} />
+      <TranslationBar
+        lang={lang}
+        hrefRu={hrefWith("/items", sp, { lang: null })}
+        hrefEn={hrefWith("/items", sp, { lang: "en" })}
+        missing={loc.missing}
+        enabled={loc.enabled}
+      />
+      <ItemCard i={loc.entry} />
       <PinButton pinned={pinned.has(open.key)} toggle={toggleEntry.bind(null, "item", open.key)} />
       {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>

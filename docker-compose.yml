@@ -7,7 +7,36 @@ services:
     environment:
       # Ключ для входа. Пустой — вход без ключа.
       - ACCESS_KEY=${ACCESS_KEY:-changeme}
+      # Бесплатный автоперевод описаний на русский — сервис libretranslate ниже (без ключей, работает офлайн).
+      - LIBRETRANSLATE_URL=http://libretranslate:5000
     volumes:
       # SQLite (app.db) и загруженные PDF лежат здесь и переживают перезапуски
       - ./data:/data
+    depends_on:
+      - libretranslate
     restart: unless-stopped
+
+  # Переводчик (LibreTranslate + Argos): локальный, бесплатный. Первый запуск скачивает языковую модель en→ru
+  # (несколько минут, один раз — она хранится в томе), потом работает без интернета.
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    container_name: dnd-libretranslate
+    ports:
+      # Нужен только для запуска приложения без Docker (npm run dev); для контейнера app порт наружу не обязателен
+      - "5000:5000"
+    environment:
+      - LT_LOAD_ONLY=en,ru
+      - LT_DISABLE_WEB_UI=true
+      - LT_UPDATE_MODELS=false
+    volumes:
+      - libretranslate_models:/home/libretranslate/.local:rw
+    healthcheck:
+      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      interval: 10s
+      timeout: 4s
+      retries: 4
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  libretranslate_models:

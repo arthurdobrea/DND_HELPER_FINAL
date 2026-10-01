@@ -11,6 +11,8 @@ import { PDF_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
 import type { EntryGroup, EntryKind } from "@/lib/db/schema";
 import { defaultGroup, isGroup } from "@/lib/groups";
+import { TranslationError, translationEnabled } from "@/lib/translate/engine";
+import { ensureTranslated, lookupCached, translatable } from "@/lib/translate/store";
 import { getMonster } from "@/lib/open5e";
 import { getItems, getMonsterRaw, getSpells } from "@/lib/catalog";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
@@ -291,6 +293,49 @@ export async function clearShop() {
   const world = await requireWorld();
   getDb().delete(schema.shopItems).where(eq(schema.shopItems.worldId, world.id)).run();
   revalidatePath("/shop");
+}
+
+// ---------- Автоперевод ----------
+
+export type TranslateResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Переводит пачку строк и кладёт в кэш. Вызывается из AutoTranslate порциями.
+ * texts приходит ОДНОЙ строкой — JSON-массивом. Так надёжнее: длинные строки Next отправляет как FormData,
+ * а при такой отправке браузер может заменить «
+» на «
+
+» — текст изменился бы, и перевод лёг бы в кэш
+ * под другим ключом (страница его потом не находит). В JSON переводы строк экранированы и не искажаются.
+ */
+export async function translateSegments(payload: string): Promise<TranslateResult> {
+  if (!translationEnabled()) return { ok: false, error: "Автоперевод недоступен: сервис перевода не запущен (docker compose up -d)" };
+  let texts: unknown;
+  try {
+    texts = JSON.parse(payload);
+  } catch {
+    return { ok: false, error: "Некорректный запрос на перевод" };
+  }
+  // Защита от случайных гигантских запросов (каждый платный).
+  if (!Array.isArray(texts) || texts.length > 40 || texts.some((t) => typeof t !== "string") || texts.reduce((n: number, t: string) => n + t.length, 0) > 60_000) {
+    return { ok: false, error: "Слишком большой запрос на перевод" };
+  }
+  const list = texts as string[];
+  try {
+    await ensureTranslated(list);
+    // Ответ «ок» только если перевод реально лежит в кэше — иначе страница никогда не увидит результат.
+    const wanted = translatable(list);
+    const stored = lookupCached(wanted).size;
+    if (stored < wanted.length) {
+      console.error(`[translate] сохранено ${stored} из ${wanted.length} строк`);
+      return { ok: false, error: `Часть переводов не сохранилась (${stored} из ${wanted.length}) — повторите` };
+    }
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof TranslationError) return { ok: false, error: e.message };
+    console.error("[translate]", e instanceof Error ? e.message : e);
+    return { ok: false, error: "Не удалось перевести (ответ модели не распознан) — повторите" };
+  }
 }
 
 // ---------- Каталоги ----------
