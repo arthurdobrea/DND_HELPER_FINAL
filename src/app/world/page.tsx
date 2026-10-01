@@ -5,6 +5,7 @@ import type { WorldEntry } from "@/lib/db/schema";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { getItems, getSpells, type Item, type Spell } from "@/lib/catalog";
 import { ITEM_CATEGORIES, RARITIES, SCHOOLS, label } from "@/lib/catalog/labels";
+import { groupOrder } from "@/lib/groups";
 import { spellLevelLabel } from "@/lib/catalog/spells";
 import type { Monster } from "@/lib/open5e";
 import { saveEntryNotes } from "@/app/actions";
@@ -51,6 +52,7 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
   );
   const entries = worldEntries(world.id).sort(
     (a, b) =>
+      groupOrder(a.grp) - groupOrder(b.grp) ||
       KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
       (a.kind === "page"
         ? (bookTitles.get(a.bookId ?? 0) ?? "").localeCompare(bookTitles.get(b.bookId ?? 0) ?? "") ||
@@ -60,6 +62,7 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
   const summaries: EntrySummary[] = entries.map((x) => ({
     id: x.id,
     kind: x.kind,
+    group: x.grp,
     title: x.title,
     subtitle: subtitle(x, bookTitles),
     tags: x.tags,
@@ -73,7 +76,7 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
     const notes = (
       <NotesEditor key={`${selected.id}:${selected.notes}`} initial={selected.notes} save={saveEntryNotes.bind(null, selected.id)} />
     );
-    const header = <EntryHeader key={`header-${selected.id}`} entry={{ id: selected.id, kind: selected.kind, title: selected.title, tags: selected.tags }} />;
+    const header = <EntryHeader key={`header-${selected.id}`} entry={{ id: selected.id, kind: selected.kind, group: selected.grp, title: selected.title, tags: selected.tags }} />;
 
     if (selected.kind === "page") {
       detail =

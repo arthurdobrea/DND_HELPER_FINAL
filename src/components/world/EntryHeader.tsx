@@ -2,16 +2,22 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { deleteEntry, updateEntry } from "@/app/actions";
-import type { EntryKind } from "@/lib/db/schema";
+import { deleteEntry, setEntryGroup, updateEntry } from "@/app/actions";
+import type { EntryGroup, EntryKind } from "@/lib/db/schema";
+import { GROUPS } from "@/lib/groups";
 import { KIND_META } from "./WorldSidebar";
 
-/** Заголовок открытой закладки: название, теги, переименование, удаление. */
-export function EntryHeader({ entry }: { entry: { id: number; kind: EntryKind; title: string; tags: string } }) {
+/** Заголовок открытой закладки: название, теги, группа, переименование, удаление. */
+export function EntryHeader({
+  entry,
+}: {
+  entry: { id: number; kind: EntryKind; group: EntryGroup; title: string; tags: string };
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(entry.title);
   const [tags, setTags] = useState(entry.tags);
+  const [group, setGroup] = useState(entry.group);
   const [pending, start] = useTransition();
 
   if (editing) {
@@ -53,6 +59,27 @@ export function EntryHeader({ entry }: { entry: { id: number; kind: EntryKind; t
           </div>
         )}
       </div>
+
+      <label className="flex items-center gap-1.5 text-xs text-muted" title="Группа закладки">
+        Группа
+        <select
+          value={group}
+          disabled={pending}
+          onChange={(e) => {
+            const next = e.target.value as EntryGroup;
+            setGroup(next);
+            start(() => setEntryGroup(entry.id, next));
+          }}
+          className="input py-1 text-sm text-text"
+        >
+          {GROUPS.map((g) => (
+            <option key={g.key || "other"} value={g.key}>
+              {g.icon} {g.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <button className="btn" onClick={() => setEditing(true)} title="Название и теги">
         ✏️
       </button>

@@ -9,7 +9,8 @@ import { and, eq } from "drizzle-orm";
 import { AUTH_COOKIE, getAccessKey } from "@/lib/auth";
 import { PDF_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
-import type { EntryKind } from "@/lib/db/schema";
+import type { EntryGroup, EntryKind } from "@/lib/db/schema";
+import { defaultGroup, isGroup } from "@/lib/groups";
 import { getMonster } from "@/lib/open5e";
 import { getItems, getMonsterRaw, getSpells } from "@/lib/catalog";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
@@ -109,9 +110,21 @@ export async function toggleEntry(kind: RefKind, ref: string) {
   } else {
     const { title, data } = await loadSnapshot(kind, ref);
     db.insert(schema.worldEntries)
-      .values({ worldId: world.id, kind, ref, title, data: JSON.stringify(data), createdAt: new Date() })
+      .values({ worldId: world.id, kind, grp: defaultGroup(kind), ref, title, data: JSON.stringify(data), createdAt: new Date() })
       .run();
   }
+  revalidateEntries();
+}
+
+/** Перенести закладку в другую группу (локации / NPC / артефакты / прочее). */
+export async function setEntryGroup(id: number, group: EntryGroup) {
+  if (!isGroup(group)) return;
+  const world = await requireWorld();
+  getDb()
+    .update(schema.worldEntries)
+    .set({ grp: group })
+    .where(and(eq(schema.worldEntries.id, id), eq(schema.worldEntries.worldId, world.id)))
+    .run();
   revalidateEntries();
 }
 
@@ -148,13 +161,14 @@ export async function deleteEntry(id: number) {
 
 // ---------- Закладки мира: страницы книг ----------
 
-export async function addPageEntry(bookId: number, page: number, title: string, tags = "") {
+export async function addPageEntry(bookId: number, page: number, title: string, tags = "", group: EntryGroup = "") {
   const world = await requireWorld();
   const row = getDb()
     .insert(schema.worldEntries)
     .values({
       worldId: world.id,
       kind: "page",
+      grp: isGroup(group) ? group : "",
       bookId,
       page,
       title: title.trim() || `Стр. ${page}`,
@@ -218,6 +232,65 @@ export async function deleteCharacter(id: number) {
   getDb().delete(schema.characters).where(characterWhere(id, world.id)).run();
   revalidatePath("/characters");
   redirect("/characters");
+}
+
+// ---------- Магазин артефактов ----------
+
+const shopWhere = (worldId: number, key: string) =>
+  and(eq(schema.shopItems.worldId, worldId), eq(schema.shopItems.itemKey, key));
+
+/** Добавить вещь из каталога в магазин мира / убрать из него. */
+export async function toggleShopItem(key: string) {
+  const world = await requireWorld();
+  const db = getDb();
+  const existing = db.select({ id: schema.shopItems.id }).from(schema.shopItems).where(shopWhere(world.id, key)).get();
+  if (existing) {
+    db.delete(schema.shopItems).where(eq(schema.shopItems.id, existing.id)).run();
+  } else {
+    const item = (await getItems()).find((i) => i.key === key);
+    if (!item) throw new Error("Вещь не найдена в каталоге");
+    db.insert(schema.shopItems)
+      .values({ worldId: world.id, itemKey: key, name: item.name, data: JSON.stringify(item), price: item.price, qty: 1, createdAt: new Date() })
+      .run();
+  }
+  revalidatePath("/shop");
+}
+
+/** Добавить пачку найденных вещей (уже имеющиеся пропускаются). */
+export async function addShopItems(keys: string[]) {
+  const world = await requireWorld();
+  const db = getDb();
+  const wanted = new Set(keys.slice(0, 200));
+  const items = (await getItems()).filter((i) => wanted.has(i.key));
+  db.transaction((tx) => {
+    for (const item of items) {
+      tx.insert(schema.shopItems)
+        .values({ worldId: world.id, itemKey: item.key, name: item.name, data: JSON.stringify(item), price: item.price, qty: 1, createdAt: new Date() })
+        .onConflictDoNothing()
+        .run();
+    }
+  });
+  revalidatePath("/shop");
+}
+
+/** Цена (зм) и количество; qty = null — без ограничений. */
+export async function updateShopItem(id: number, price: number | null, qty: number | null) {
+  const world = await requireWorld();
+  getDb()
+    .update(schema.shopItems)
+    .set({
+      price: price === null ? null : Math.max(0, Math.round(price * 100) / 100),
+      qty: qty === null ? null : Math.max(0, Math.floor(qty)),
+    })
+    .where(and(eq(schema.shopItems.id, id), eq(schema.shopItems.worldId, world.id)))
+    .run();
+  revalidatePath("/shop");
+}
+
+export async function clearShop() {
+  const world = await requireWorld();
+  getDb().delete(schema.shopItems).where(eq(schema.shopItems.worldId, world.id)).run();
+  revalidatePath("/shop");
 }
 
 // ---------- Каталоги ----------

@@ -85,6 +85,16 @@ export const RARITIES: Record<string, string> = {
   artifact: "Артефакт",
 };
 
+/** Цвет названия предмета по редкости (классы Tailwind). */
+export const RARITY_COLORS: Record<string, string> = {
+  common: "text-text",
+  uncommon: "text-green-400",
+  rare: "text-sky-400",
+  "very-rare": "text-violet-400",
+  legendary: "text-orange-400",
+  artifact: "text-red-400",
+};
+
 export const ITEM_CATEGORIES: Record<string, string> = {
   "adventuring-gear": "Снаряжение",
   ammunition: "Боеприпасы",

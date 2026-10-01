@@ -13,7 +13,8 @@ function inline(text: string): ReactNode[] {
 
 export function RichText({ text, className }: { text?: string | null; className?: string }) {
   if (!text) return null;
-  const paragraphs = text.split(/\n\s*\n|\n/).filter((p) => p.trim());
+  // В данных Open5e переводы строк часто приходят буквальным текстом «\n» — превращаем в настоящие.
+  const paragraphs = text.replace(/\\n/g, "\n").split(/\n\s*\n|\n/).filter((p) => p.trim());
   return (
     <div className={className}>
       {paragraphs.map((p, i) => (

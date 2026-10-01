@@ -16,7 +16,7 @@ export default async function BookPage({ params, searchParams }: PageProps<"/boo
 
   const bookmarks = worldEntries(world.id, "page")
     .filter((e) => e.bookId === book.id)
-    .map((e) => ({ id: e.id, page: e.page ?? 1, title: e.title, tags: e.tags }))
+    .map((e) => ({ id: e.id, page: e.page ?? 1, title: e.title, tags: e.tags, group: e.grp }))
     .sort((a, b) => a.page - b.page);
 
   return (

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { entryRefs, findEntry, requireWorld } from "@/lib/world";
 import { catalogInfo, getItems, sourceOptions, type Item } from "@/lib/catalog";
-import { DAMAGE_TYPES, ITEM_CATEGORIES, RARITIES, label } from "@/lib/catalog/labels";
+import { DAMAGE_TYPES, ITEM_CATEGORIES, RARITIES, RARITY_COLORS, label } from "@/lib/catalog/labels";
 import { filterItems, formatPrice, parseItemFilter } from "@/lib/catalog/items";
 import { hrefWith } from "@/lib/url";
 import { resyncCatalog, saveEntryNotes, toggleEntry } from "@/app/actions";
@@ -15,15 +15,6 @@ import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
 
 const PAGE = 100;
-
-const RARITY_COLORS: Record<string, string> = {
-  common: "text-text",
-  uncommon: "text-green-400",
-  rare: "text-sky-400",
-  "very-rare": "text-violet-400",
-  legendary: "text-orange-400",
-  artifact: "text-red-400",
-};
 
 export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
   await connection();

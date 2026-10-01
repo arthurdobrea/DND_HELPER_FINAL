@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { addPageEntry, deleteEntry, updateEntry } from "@/app/actions";
+import { addPageEntry, deleteEntry, setEntryGroup, updateEntry } from "@/app/actions";
+import type { EntryGroup } from "@/lib/db/schema";
+import { GROUPS, GROUP_META } from "@/lib/groups";
 import PdfPane from "./PdfPane";
 
-export type PageMark = { id: number; page: number; title: string; tags: string };
+export type PageMark = { id: number; page: number; title: string; tags: string; group: EntryGroup };
 
 type Props = {
   book: { id: number; title: string };
@@ -13,12 +15,30 @@ type Props = {
   initialPage: number;
 };
 
-const toMark = (r: { id: number; page: number | null; title: string; tags: string }): PageMark => ({
+const toMark = (r: { id: number; page: number | null; title: string; tags: string; grp: EntryGroup }): PageMark => ({
   id: r.id,
   page: r.page ?? 1,
   title: r.title,
   tags: r.tags,
+  group: r.grp,
 });
+
+function GroupSelect({ value, onChange, className = "" }: { value: EntryGroup; onChange: (g: EntryGroup) => void; className?: string }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as EntryGroup)}
+      title="Группа закладки"
+      className={`input px-1.5 text-sm ${className}`}
+    >
+      {GROUPS.map((g) => (
+        <option key={g.key || "other"} value={g.key}>
+          {g.icon} {g.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export default function BookViewer({ book, worldName, initialBookmarks, initialPage }: Props) {
   const [page, setPage] = useState(initialPage);
@@ -26,6 +46,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
   const [filter, setFilter] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [newTags, setNewTags] = useState("");
+  const [newGroup, setNewGroup] = useState<EntryGroup>("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [pending, start] = useTransition();
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +77,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     start(async () => {
-      const row = await addPageEntry(book.id, page, newTitle, newTags);
+      const row = await addPageEntry(book.id, page, newTitle, newTags, newGroup);
       setBookmarks((bs) => [...bs, toMark(row)].sort((a, b) => a.page - b.page));
       setNewTitle("");
       setNewTags("");
@@ -71,10 +92,11 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
     });
   }
 
-  function handleUpdate(id: number, title: string, tags: string) {
+  function handleUpdate(id: number, title: string, tags: string, group: EntryGroup) {
     start(async () => {
       const row = await updateEntry(id, title, tags);
-      if (row) setBookmarks((bs) => bs.map((b) => (b.id === id ? toMark(row) : b)));
+      await setEntryGroup(id, group);
+      if (row) setBookmarks((bs) => bs.map((b) => (b.id === id ? toMark({ ...row, grp: group }) : b)));
       setEditingId(null);
     });
   }
@@ -113,6 +135,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
                 +
               </button>
             </div>
+            <GroupSelect value={newGroup} onChange={setNewGroup} className="w-full py-1.5" />
           </form>
         </div>
 
@@ -138,7 +161,14 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
               >
                 <span className="w-10 shrink-0 text-right font-mono text-muted">{b.page}</span>
                 <span className="flex-1">
-                  <span className="block">{b.title}</span>
+                  <span className="block">
+                    {b.group && (
+                      <span className="mr-1" title={GROUP_META[b.group].label}>
+                        {GROUP_META[b.group].icon}
+                      </span>
+                    )}
+                    {b.title}
+                  </span>
                   {b.tags && (
                     <span className="mt-0.5 flex flex-wrap gap-1">
                       {b.tags.split(",").map((t) => (
@@ -198,17 +228,19 @@ function EditRow({
   onCancel,
 }: {
   bookmark: PageMark;
-  onSave: (id: number, title: string, tags: string) => void;
+  onSave: (id: number, title: string, tags: string, group: EntryGroup) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState(bookmark.title);
   const [tags, setTags] = useState(bookmark.tags);
+  const [group, setGroup] = useState(bookmark.group);
   return (
     <li className="space-y-1 rounded-md bg-panel-2 p-2">
       <input value={title} onChange={(e) => setTitle(e.target.value)} className="input w-full text-sm" autoFocus />
       <input value={tags} onChange={(e) => setTags(e.target.value)} className="input w-full text-sm" placeholder="теги" />
+      <GroupSelect value={group} onChange={setGroup} className="w-full py-1.5" />
       <div className="flex gap-1">
-        <button className="btn flex-1" onClick={() => onSave(bookmark.id, title, tags)}>
+        <button className="btn flex-1" onClick={() => onSave(bookmark.id, title, tags, group)}>
           Сохранить
         </button>
         <button className="btn" onClick={onCancel}>

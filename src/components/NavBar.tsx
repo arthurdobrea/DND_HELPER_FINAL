@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/monsters", label: "🐲 Монстры" },
   { href: "/spells", label: "✨ Заклинания" },
   { href: "/items", label: "🗡️ Предметы" },
+  { href: "/shop", label: "🏺 Магазин" },
   { href: "/books", label: "📚 Книги" },
 ];
 

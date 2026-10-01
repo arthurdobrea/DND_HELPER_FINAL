@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS world_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
+  grp TEXT NOT NULL DEFAULT '',
   ref TEXT NOT NULL DEFAULT '',
   book_id INTEGER REFERENCES books(id) ON DELETE CASCADE,
   page INTEGER,
@@ -46,6 +47,17 @@ CREATE TABLE IF NOT EXISTS characters (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS characters_world_idx ON characters(world_id);
+CREATE TABLE IF NOT EXISTS shop_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  item_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL,
+  price REAL,
+  qty INTEGER,
+  created_at INTEGER NOT NULL,
+  UNIQUE (world_id, item_key)
+);
 CREATE TABLE IF NOT EXISTS catalog (
   kind TEXT NOT NULL,
   key TEXT NOT NULL,
@@ -59,17 +71,44 @@ CREATE TABLE IF NOT EXISTS catalog_meta (
 );
 `;
 
-const SCHEMA_VERSION = 1;
+/** Копия базы рядом с ней перед миграцией, которая меняет существующие данные. */
+function backupDb(sqlite: Database.Database, suffix: string) {
+  sqlite.pragma("wal_checkpoint(TRUNCATE)");
+  fs.copyFileSync(DB_PATH, `${DB_PATH}.backup-${suffix}`);
+}
+
+function migrate(sqlite: Database.Database) {
+  const version = sqlite.pragma("user_version", { simple: true }) as number;
+  if (version < 1) migrateToV1(sqlite);
+  if (version < 2) migrateToV2(sqlite);
+}
+
+/**
+ * v1 → v2: у закладок мира появилась группа (локация / NPC / артефакт).
+ * Существующим закладкам: монстры → NPC, предметы → артефакты, остальные — «Прочее».
+ * Перед миграцией (если закладки есть) делается копия базы: app.db.backup-v1.
+ */
+function migrateToV2(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(world_entries)").all() as { name: string }[];
+  const hasGroup = columns.some((c) => c.name === "grp");
+  const entries = (sqlite.prepare("SELECT count(*) AS c FROM world_entries").get() as { c: number }).c;
+  if (!hasGroup && entries > 0) backupDb(sqlite, "v1");
+
+  sqlite.transaction(() => {
+    if (!hasGroup) sqlite.exec("ALTER TABLE world_entries ADD COLUMN grp TEXT NOT NULL DEFAULT ''");
+    // Выполняется один раз (по user_version), поэтому позже выбранные вручную группы не затрутся.
+    sqlite.exec("UPDATE world_entries SET grp = 'npc' WHERE kind = 'monster' AND grp = ''");
+    sqlite.exec("UPDATE world_entries SET grp = 'artifact' WHERE kind = 'item' AND grp = ''");
+    sqlite.pragma("user_version = 2");
+  })();
+}
 
 /**
  * v0 → v1: избранные монстры (favorites), закреплённые заклинания/предметы (pins)
  * и закладки книг (bookmarks) переезжают в world_entries мира «Мой мир».
  * Перед миграцией делается копия базы рядом: app.db.backup-v0.
  */
-function migrate(sqlite: Database.Database) {
-  const version = sqlite.pragma("user_version", { simple: true }) as number;
-  if (version >= SCHEMA_VERSION) return;
-
+function migrateToV1(sqlite: Database.Database) {
   const hasTable = (name: string) =>
     !!sqlite.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
   const legacy = ["favorites", "pins", "bookmarks"].filter(hasTable);
@@ -78,10 +117,7 @@ function migrate(sqlite: Database.Database) {
     0,
   );
 
-  if (legacyRows > 0) {
-    sqlite.pragma("wal_checkpoint(TRUNCATE)");
-    fs.copyFileSync(DB_PATH, `${DB_PATH}.backup-v0`);
-  }
+  if (legacyRows > 0) backupDb(sqlite, "v0");
 
   sqlite.transaction(() => {
     if (legacyRows > 0) {
@@ -116,7 +152,7 @@ function migrate(sqlite: Database.Database) {
       }
     }
     for (const t of legacy) sqlite.exec(`DROP TABLE ${t}`);
-    sqlite.pragma(`user_version = ${SCHEMA_VERSION}`);
+    sqlite.pragma("user_version = 1");
   })();
 }
 
