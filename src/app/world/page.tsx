@@ -5,7 +5,7 @@ import type { WorldEntry } from "@/lib/db/schema";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { getItems, getSpells, type Item, type Spell } from "@/lib/catalog";
 import { ITEM_CATEGORIES, RARITIES, SCHOOLS, label } from "@/lib/catalog/labels";
-import { groupOrder } from "@/lib/groups";
+import { worldCategories } from "@/lib/categories";
 import { spellLevelLabel } from "@/lib/catalog/spells";
 import type { Monster } from "@/lib/open5e";
 import { saveEntryNotes } from "@/app/actions";
@@ -55,6 +55,11 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
   const bookTitles = new Map(
     getDb().select({ id: schema.books.id, title: schema.books.title }).from(schema.books).all().map((b) => [b.id, b.title]),
   );
+  const categories = worldCategories(world.id);
+  const groupOrder = (g: string) => {
+    const i = categories.findIndex((c) => c.key === g);
+    return i < 0 ? categories.length : i;
+  };
   const entries = worldEntries(world.id).sort(
     (a, b) =>
       groupOrder(a.grp) - groupOrder(b.grp) ||
@@ -81,7 +86,7 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
     const notes = (
       <NotesEditor key={`${selected.id}:${selected.notes}`} initial={selected.notes} save={saveEntryNotes.bind(null, selected.id)} />
     );
-    const header = <EntryHeader key={`header-${selected.id}`} entry={{ id: selected.id, kind: selected.kind, group: selected.grp, title: selected.title, tags: selected.tags }} />;
+    const header = <EntryHeader key={`header-${selected.id}-${selected.grp}`} categories={categories} entry={{ id: selected.id, kind: selected.kind, group: selected.grp, title: selected.title, tags: selected.tags }} />;
 
     if (selected.kind === "page") {
       detail =
@@ -148,8 +153,8 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
   }
 
   return (
-    <div className="flex flex-1 lg:h-[calc(100vh-49px)] lg:overflow-hidden">
-      <WorldSidebar worldName={world.name} entries={summaries} selectedId={selected?.id ?? null} />
+    <div className="flex flex-1 lg:h-[calc(100dvh-var(--header-h,49px))] lg:flex-none lg:overflow-hidden">
+      <WorldSidebar worldName={world.name} categories={categories} entries={summaries} selectedId={selected?.id ?? null} />
       <section className="min-w-0 flex-1">
         {detail ?? (
           <div className="mx-auto max-w-xl p-10 text-center">

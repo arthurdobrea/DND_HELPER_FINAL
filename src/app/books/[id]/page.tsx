@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { worldCategories } from "@/lib/categories";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { BookViewerLoader } from "@/components/BookViewerLoader";
 
@@ -24,6 +25,7 @@ export default async function BookPage({ params, searchParams }: PageProps<"/boo
       key={book.id}
       book={{ id: book.id, title: book.title }}
       worldName={world.name}
+      categories={worldCategories(world.id)}
       initialBookmarks={bookmarks}
       initialPage={Math.max(1, Number(page) || 1)}
     />

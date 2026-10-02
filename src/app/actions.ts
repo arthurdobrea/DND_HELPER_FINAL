@@ -10,7 +10,8 @@ import { AUTH_COOKIE, getAccessKey } from "@/lib/auth";
 import { PDF_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
 import type { EntryGroup, EntryKind } from "@/lib/db/schema";
-import { defaultGroup, isGroup } from "@/lib/groups";
+import { groupAllowed } from "@/lib/categories";
+import { COLORS, ICON_KEYS, MAX_CATEGORY_NAME, customKey, defaultGroup } from "@/lib/groups";
 import { TranslationError, translationEnabled } from "@/lib/translate/engine";
 import { ensureTranslated, lookupCached, translatable } from "@/lib/translate/store";
 import { getMonster } from "@/lib/open5e";
@@ -118,10 +119,10 @@ export async function toggleEntry(kind: RefKind, ref: string) {
   revalidateEntries();
 }
 
-/** Перенести закладку в другую группу (локации / NPC / артефакты / прочее). */
+/** Перенести закладку в другую категорию (встроенную или свою). */
 export async function setEntryGroup(id: number, group: EntryGroup) {
-  if (!isGroup(group)) return;
   const world = await requireWorld();
+  if (!groupAllowed(world.id, group)) return;
   getDb()
     .update(schema.worldEntries)
     .set({ grp: group })
@@ -161,6 +162,60 @@ export async function deleteEntry(id: number) {
   revalidateEntries();
 }
 
+// ---------- Свои категории закладок ----------
+
+function cleanCategory(name: string, color: string, icon: string) {
+  const clean = name.trim().replace(/\s+/g, " ").slice(0, MAX_CATEGORY_NAME);
+  if (!clean || !COLORS.some((c) => c.hex === color) || !(ICON_KEYS as readonly string[]).includes(icon)) return null;
+  return { name: clean, color, icon };
+}
+
+/** Новая категория мира. Возвращает её ключ (чтобы сразу положить туда закладку) или null, если данные некорректны. */
+export async function createCategory(name: string, color: string, icon: string): Promise<EntryGroup | null> {
+  const world = await requireWorld();
+  const v = cleanCategory(name, color, icon);
+  if (!v) return null;
+  const row = getDb()
+    .insert(schema.worldCategories)
+    .values({ worldId: world.id, ...v, createdAt: new Date() })
+    .returning({ id: schema.worldCategories.id })
+    .get();
+  revalidateEntries();
+  return customKey(row.id);
+}
+
+export async function updateCategory(id: number, name: string, color: string, icon: string) {
+  const world = await requireWorld();
+  const v = cleanCategory(name, color, icon);
+  if (!v) return;
+  getDb()
+    .update(schema.worldCategories)
+    .set(v)
+    .where(and(eq(schema.worldCategories.id, id), eq(schema.worldCategories.worldId, world.id)))
+    .run();
+  revalidateEntries();
+}
+
+/** Удалить свою категорию: её закладки не пропадают, а переходят в «Без категории». */
+export async function deleteCategory(id: number) {
+  const world = await requireWorld();
+  const db = getDb();
+  db.transaction((tx) => {
+    const owned = tx
+      .select({ id: schema.worldCategories.id })
+      .from(schema.worldCategories)
+      .where(and(eq(schema.worldCategories.id, id), eq(schema.worldCategories.worldId, world.id)))
+      .get();
+    if (!owned) return;
+    tx.update(schema.worldEntries)
+      .set({ grp: "" })
+      .where(and(eq(schema.worldEntries.worldId, world.id), eq(schema.worldEntries.grp, customKey(id))))
+      .run();
+    tx.delete(schema.worldCategories).where(eq(schema.worldCategories.id, id)).run();
+  });
+  revalidateEntries();
+}
+
 // ---------- Закладки мира: страницы книг ----------
 
 export async function addPageEntry(bookId: number, page: number, title: string, tags = "", group: EntryGroup = "") {
@@ -170,7 +225,7 @@ export async function addPageEntry(bookId: number, page: number, title: string, 
     .values({
       worldId: world.id,
       kind: "page",
-      grp: isGroup(group) ? group : "",
+      grp: groupAllowed(world.id, group) ? group : "",
       bookId,
       page,
       title: title.trim() || `Стр. ${page}`,

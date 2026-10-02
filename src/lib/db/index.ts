@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS world_entries (
 );
 CREATE INDEX IF NOT EXISTS world_entries_world_idx ON world_entries(world_id, kind);
 CREATE UNIQUE INDEX IF NOT EXISTS world_entries_ref_uq ON world_entries(world_id, kind, ref) WHERE kind != 'page';
+CREATE TABLE IF NOT EXISTS world_categories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL,
+  icon TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS world_categories_world_idx ON world_categories(world_id);
 CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
@@ -88,6 +97,21 @@ function migrate(sqlite: Database.Database) {
   const version = sqlite.pragma("user_version", { simple: true }) as number;
   if (version < 1) migrateToV1(sqlite);
   if (version < 2) migrateToV2(sqlite);
+  if (version < 3) migrateToV3(sqlite);
+}
+
+/**
+ * v2 → v3: появились категории «Монстры» и «Карты». Монстры, которые в v2 автоматически попали в NPC,
+ * переезжают в «Монстры» (положить закладку в любую категорию можно в один клик).
+ * Перед миграцией (если есть что менять) делается копия базы: app.db.backup-v2.
+ */
+function migrateToV3(sqlite: Database.Database) {
+  const toMove = (sqlite.prepare("SELECT count(*) AS c FROM world_entries WHERE kind = 'monster' AND grp = 'npc'").get() as { c: number }).c;
+  if (toMove > 0) backupDb(sqlite, "v2");
+  sqlite.transaction(() => {
+    sqlite.exec("UPDATE world_entries SET grp = 'monster' WHERE kind = 'monster' AND grp = 'npc'");
+    sqlite.pragma("user_version = 3");
+  })();
 }
 
 /**

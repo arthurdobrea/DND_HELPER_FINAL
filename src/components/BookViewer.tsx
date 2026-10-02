@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { addPageEntry, deleteEntry, setEntryGroup, updateEntry } from "@/app/actions";
 import type { EntryGroup } from "@/lib/db/schema";
-import { GROUPS, GROUP_META } from "@/lib/groups";
+import { categoryOf, type Category } from "@/lib/groups";
+import { GroupIcon } from "./CategoryIcon";
 import PdfPane from "./PdfPane";
 
 export type PageMark = { id: number; page: number; title: string; tags: string; group: EntryGroup };
@@ -11,6 +12,7 @@ export type PageMark = { id: number; page: number; title: string; tags: string; 
 type Props = {
   book: { id: number; title: string };
   worldName: string;
+  categories: Category[];
   initialBookmarks: PageMark[];
   initialPage: number;
 };
@@ -23,7 +25,17 @@ const toMark = (r: { id: number; page: number | null; title: string; tags: strin
   group: r.grp,
 });
 
-function GroupSelect({ value, onChange, className = "" }: { value: EntryGroup; onChange: (g: EntryGroup) => void; className?: string }) {
+function GroupSelect({
+  categories,
+  value,
+  onChange,
+  className = "",
+}: {
+  categories: Category[];
+  value: EntryGroup;
+  onChange: (g: EntryGroup) => void;
+  className?: string;
+}) {
   return (
     <select
       value={value}
@@ -31,16 +43,16 @@ function GroupSelect({ value, onChange, className = "" }: { value: EntryGroup; o
       title="Группа закладки"
       className={`input px-1.5 text-sm ${className}`}
     >
-      {GROUPS.map((g) => (
+      {categories.map((g) => (
         <option key={g.key || "other"} value={g.key}>
-          {g.icon} {g.label}
+          {g.emoji} {g.label}
         </option>
       ))}
     </select>
   );
 }
 
-export default function BookViewer({ book, worldName, initialBookmarks, initialPage }: Props) {
+export default function BookViewer({ book, worldName, categories, initialBookmarks, initialPage }: Props) {
   const [page, setPage] = useState(initialPage);
   const [bookmarks, setBookmarks] = useState(initialBookmarks);
   const [filter, setFilter] = useState("");
@@ -108,7 +120,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
   const pageBookmarks = bookmarks.filter((b) => b.page === page);
 
   return (
-    <div className="flex h-[calc(100vh-49px)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-var(--header-h,49px))] overflow-hidden">
       {/* ---------- Панель закладок ---------- */}
       <aside className="flex w-80 shrink-0 flex-col border-r border-border bg-panel">
         <div className="border-b border-border p-3">
@@ -135,7 +147,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
                 +
               </button>
             </div>
-            <GroupSelect value={newGroup} onChange={setNewGroup} className="w-full py-1.5" />
+            <GroupSelect categories={categories} value={newGroup} onChange={setNewGroup} className="w-full py-1.5" />
           </form>
         </div>
 
@@ -152,7 +164,7 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
           {visible.length === 0 && <li className="p-2 text-sm text-muted">Закладок нет</li>}
           {visible.map((b) =>
             editingId === b.id ? (
-              <EditRow key={b.id} bookmark={b} onSave={handleUpdate} onCancel={() => setEditingId(null)} />
+              <EditRow key={b.id} categories={categories} bookmark={b} onSave={handleUpdate} onCancel={() => setEditingId(null)} />
             ) : (
               <li
                 key={b.id}
@@ -163,8 +175,8 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
                 <span className="flex-1">
                   <span className="block">
                     {b.group && (
-                      <span className="mr-1" title={GROUP_META[b.group].label}>
-                        {GROUP_META[b.group].icon}
+                      <span className="mr-1 inline-block align-text-bottom" title={categoryOf(categories, b.group).label}>
+                        <GroupIcon cat={categoryOf(categories, b.group)} size={16} />
                       </span>
                     )}
                     {b.title}
@@ -223,10 +235,12 @@ export default function BookViewer({ book, worldName, initialBookmarks, initialP
 }
 
 function EditRow({
+  categories,
   bookmark,
   onSave,
   onCancel,
 }: {
+  categories: Category[];
   bookmark: PageMark;
   onSave: (id: number, title: string, tags: string, group: EntryGroup) => void;
   onCancel: () => void;
@@ -238,7 +252,7 @@ function EditRow({
     <li className="space-y-1 rounded-md bg-panel-2 p-2">
       <input value={title} onChange={(e) => setTitle(e.target.value)} className="input w-full text-sm" autoFocus />
       <input value={tags} onChange={(e) => setTags(e.target.value)} className="input w-full text-sm" placeholder="теги" />
-      <GroupSelect value={group} onChange={setGroup} className="w-full py-1.5" />
+      <GroupSelect categories={categories} value={group} onChange={setGroup} className="w-full py-1.5" />
       <div className="flex gap-1">
         <button className="btn flex-1" onClick={() => onSave(bookmark.id, title, tags, group)}>
           Сохранить

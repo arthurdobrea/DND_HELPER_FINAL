@@ -106,3 +106,11 @@ body {
     break-after: page;
   }
 }
+
+/* ---------- Заклинания в [скобках] на странице PDF (CSS Custom Highlight API) ---------- */
+::highlight(spell-ref) {
+  background-color: rgb(217 165 74 / 0.32);
+  text-decoration: underline;
+  text-decoration-color: #d9a54a;
+  text-decoration-thickness: 2px;
+}

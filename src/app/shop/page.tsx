@@ -73,7 +73,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   const openItem = openKey ? (byKey.get(openKey) ?? (inShop.get(openKey) ? snapshot(inShop.get(openKey)!) : null)) : null;
 
   const picker = adding && (
-    <section className="border-border bg-panel p-3 lg:overflow-y-auto lg:border-r">
+    <section className="relative order-2 border-border bg-panel p-3 lg:order-none lg:overflow-y-auto lg:border-r">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="font-display text-lg text-accent">Каталог вещей</h2>
         <Link href={hrefWith("/shop", sp, { add: null, q: null, kind: null, category: null, rarity: null, priceMin: null, priceMax: null, limit: null })} className="text-xs text-muted hover:text-accent">
@@ -153,7 +153,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   );
 
   const shelfView = (
-    <section className="p-3 lg:overflow-y-auto">
+    <section className="relative order-3 p-3 lg:order-none lg:overflow-y-auto">
       <div className="flex flex-wrap items-center gap-3">
         <div className="mr-auto">
           <h1 className="font-display text-2xl text-accent">🏺 Магазин артефактов</h1>
@@ -241,7 +241,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
 
   const openLoc = openItem ? localize("item", openItem, lang) : null;
   const detail = (
-    <section className="border-border p-3 lg:overflow-y-auto lg:border-l">
+    <section className="sticky top-[var(--header-h,49px)] z-10 order-1 max-h-[45dvh] overflow-y-auto border-b border-border bg-bg p-3 lg:static lg:order-none lg:max-h-none lg:border-b-0 lg:border-l">
       {openItem && openLoc ? (
         <div className="space-y-3">
           {/* Вещи из магазина переводит панель над полкой; здесь — только для вещи из каталога, которой в магазине нет */}
@@ -259,7 +259,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
 
   return (
     <div
-      className={`grid flex-1 lg:h-[calc(100vh-49px)] lg:overflow-hidden ${
+      className={`grid flex-1 lg:h-[calc(100dvh-var(--header-h,49px))] lg:flex-none lg:overflow-hidden ${
         adding ? "lg:grid-cols-[340px_minmax(0,1fr)_minmax(0,420px)]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]"
       }`}
     >

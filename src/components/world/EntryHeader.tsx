@@ -3,14 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteEntry, setEntryGroup, updateEntry } from "@/app/actions";
+import { GroupTile } from "@/components/CategoryIcon";
 import type { EntryGroup, EntryKind } from "@/lib/db/schema";
-import { GROUPS } from "@/lib/groups";
+import type { Category } from "@/lib/groups";
 import { KIND_META } from "./WorldSidebar";
 
-/** Заголовок открытой закладки: название, теги, группа, переименование, удаление. */
+/** Заголовок открытой закладки: название, теги, категория (значки), переименование, удаление. */
 export function EntryHeader({
   entry,
+  categories,
 }: {
+  categories: Category[];
   entry: { id: number; kind: EntryKind; group: EntryGroup; title: string; tags: string };
 }) {
   const router = useRouter();
@@ -60,25 +63,25 @@ export function EntryHeader({
         )}
       </div>
 
-      <label className="flex items-center gap-1.5 text-xs text-muted" title="Группа закладки">
-        Группа
-        <select
-          value={group}
-          disabled={pending}
-          onChange={(e) => {
-            const next = e.target.value as EntryGroup;
-            setGroup(next);
-            start(() => setEntryGroup(entry.id, next));
-          }}
-          className="input py-1 text-sm text-text"
-        >
-          {GROUPS.map((g) => (
-            <option key={g.key || "other"} value={g.key}>
-              {g.icon} {g.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex max-w-[45%] flex-wrap items-center justify-end gap-1.5" role="radiogroup" aria-label="Категория закладки">
+        {categories.map((g) => (
+          <button
+            key={g.key || "none"}
+            type="button"
+            role="radio"
+            aria-checked={group === g.key}
+            disabled={pending}
+            title={`${g.label} — ${g.hint}`}
+            onClick={() => {
+              setGroup(g.key);
+              start(() => setEntryGroup(entry.id, g.key));
+            }}
+            className={`rounded-lg p-0.5 transition ${group === g.key ? "" : "opacity-45 hover:opacity-100"}`}
+          >
+            <GroupTile cat={g} size={34} active={group === g.key} />
+          </button>
+        ))}
+      </div>
 
       <button className="btn" onClick={() => setEditing(true)} title="Название и теги">
         ✏️

@@ -21,8 +21,22 @@ export const books = sqliteTable("books", {
 export const ENTRY_KINDS = ["page", "spell", "item", "monster"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
-/** Группа закладки: локация, NPC, артефакт; пустая строка — «Прочее». См. lib/groups.ts. */
-export type EntryGroup = "location" | "npc" | "artifact" | "";
+/** Встроенные категории закладок; пустая строка — без категории. См. lib/groups.ts. */
+export type BuiltinGroup = "monster" | "npc" | "artifact" | "location" | "map" | "";
+/** Категория закладки: встроенная или своя (ключ `c<id>` строки world_categories). */
+export type EntryGroup = BuiltinGroup | `c${number}`;
+
+/** Свои категории закладок мира: название, цвет (hex из палитры) и значок (ключ из lib/groups.ts). */
+export const worldCategories = sqliteTable("world_categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  color: text("color").notNull(),
+  icon: text("icon").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
 
 /**
  * Закладка мира: страница книги, заклинание, предмет или монстр.
@@ -114,4 +128,5 @@ export type World = typeof worlds.$inferSelect;
 export type Book = typeof books.$inferSelect;
 export type WorldEntry = typeof worldEntries.$inferSelect;
 export type Character = typeof characters.$inferSelect;
+export type WorldCategory = typeof worldCategories.$inferSelect;
 export type ShopItem = typeof shopItems.$inferSelect;

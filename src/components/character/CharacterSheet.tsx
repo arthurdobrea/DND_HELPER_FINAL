@@ -143,7 +143,7 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
   return (
     <div className="flex flex-col items-center gap-6 pb-10">
       {/* ---------- Панель действий ---------- */}
-      <div className="no-print sticky top-[49px] z-10 flex w-full items-center gap-3 border-b border-border bg-bg/95 px-4 py-2 text-sm backdrop-blur">
+      <div className="no-print sticky top-[var(--header-h,49px)] z-10 flex w-full items-center gap-3 border-b border-border bg-bg/95 px-4 py-2 text-sm backdrop-blur">
         <Link href="/characters" className="btn">
           ← Партия
         </Link>
