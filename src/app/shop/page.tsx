@@ -17,9 +17,13 @@ import { localize, localizeMany, parseLang } from "@/lib/translate/view";
 import { ShopRow } from "@/components/shop/ShopRow";
 import { LootRoller } from "@/components/shop/LootRoller";
 import { AddAllButton, ClearShopButton, ShopDetailButton, ShopToggle } from "@/components/shop/ShopButtons";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const PAGE = 60;
 const BULK_MAX = 100;
+
+export const metadata: Metadata = pageMeta("Магазин", "🏺");
 
 export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   await connection();

@@ -19,6 +19,9 @@ import { StatBlock } from "@/components/StatBlock";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
 import { hrefWith } from "@/lib/url";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
+import { getCurrentWorld } from "@/lib/world";
 
 const KIND_ORDER = { page: 0, spell: 1, item: 2, monster: 3 } as const;
 
@@ -43,6 +46,13 @@ function subtitle(e: WorldEntry, bookTitles: Map<number, string>): string {
       return m ? `CR ${m.challenge_rating} · ${m.type}` : "";
     }
   }
+}
+
+export async function generateMetadata({ searchParams }: PageProps<"/world">): Promise<Metadata> {
+  const world = await getCurrentWorld();
+  const { e } = await searchParams;
+  const entry = world && typeof e === "string" ? worldEntries(world.id).find((x) => String(x.id) === e) : undefined;
+  return pageMeta(entry ? entry.title : `Закладки${world ? ` · ${world.name}` : ""}`, "🌍");
 }
 
 export default async function WorldPage({ searchParams }: PageProps<"/world">) {

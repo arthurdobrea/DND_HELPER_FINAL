@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { NavBar } from "@/components/NavBar";
 import { getCurrentWorld } from "@/lib/world";
+import { pageMeta } from "@/lib/meta";
 import "./globals.css";
 
+// Значок и заголовок по умолчанию; у каждой страницы свои (lib/meta.ts) — так вкладки браузера легко различать.
 export const metadata: Metadata = {
-  title: "DnD Helper",
+  ...pageMeta("DnD Helper", "🐉"),
   description: "Помощник мастера: миры, закладки по книгам, заклинания, предметы, монстры",
 };
 

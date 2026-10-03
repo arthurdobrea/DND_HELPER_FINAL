@@ -4,8 +4,12 @@ import { getDb, schema } from "@/lib/db";
 import { getCurrentWorld } from "@/lib/world";
 import { createWorld, selectWorld } from "@/app/actions";
 import { WorldActions } from "@/components/WorldActions";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const KIND_LABELS = { page: "📖", spell: "✨", item: "🗡️", monster: "🐲" } as const;
+
+export const metadata: Metadata = pageMeta("Миры", "🐉");
 
 export default async function WorldsPage() {
   await connection();

@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { requireWorld } from "@/lib/world";
 import { initiative, normalizeSheet, passivePerception, signed, spellStats } from "@/lib/character";
 import { createCharacter } from "@/app/actions";
 import { QuickHp } from "@/components/character/QuickHp";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
+
+export const metadata: Metadata = pageMeta("Персонажи", "🧙");
 
 export default async function CharactersPage() {
   await connection();
@@ -13,7 +17,7 @@ export default async function CharactersPage() {
   const rows = getDb()
     .select()
     .from(schema.characters)
-    .where(eq(schema.characters.worldId, world.id))
+    .where(and(eq(schema.characters.worldId, world.id), eq(schema.characters.kind, "pc")))
     .orderBy(asc(schema.characters.name))
     .all();
   const party = rows.map((r) => ({ id: r.id, s: normalizeSheet(JSON.parse(r.data)) }));
@@ -39,6 +43,9 @@ export default async function CharactersPage() {
                   {[s.race, s.className].filter(Boolean).join(" · ") || "—"}
                   {s.playerName && ` · игрок: ${s.playerName}`}
                 </div>
+              </Link>
+              <Link href={`/story?h=${id}`} className="mt-1 inline-block text-xs text-muted hover:text-accent">
+                📜 Сюжет и зацепки героя
               </Link>
 
               <div className="mt-3 flex items-center gap-2">

@@ -1,4 +1,8 @@
 import { LoginForm } from "./LoginForm";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
+
+export const metadata: Metadata = pageMeta("Вход", "🔑");
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { next } = await searchParams;

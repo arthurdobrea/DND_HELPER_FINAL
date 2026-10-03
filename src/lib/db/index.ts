@@ -51,11 +51,31 @@ CREATE TABLE IF NOT EXISTS characters (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'pc',
+  monster_key TEXT,
   data TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS characters_world_idx ON characters(world_id);
+CREATE TABLE IF NOT EXISTS story_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  character_id INTEGER REFERENCES characters(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  subject TEXT NOT NULL DEFAULT '',
+  trigger TEXT NOT NULL DEFAULT '',
+  boon TEXT NOT NULL DEFAULT '',
+  boon_given INTEGER NOT NULL DEFAULT 0,
+  told INTEGER NOT NULL DEFAULT 0,
+  told_at INTEGER,
+  reaction TEXT NOT NULL DEFAULT '',
+  pinned INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS story_notes_world_idx ON story_notes(world_id, character_id);
 CREATE TABLE IF NOT EXISTS shop_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
@@ -100,6 +120,17 @@ function migrate(sqlite: Database.Database) {
   if (version < 2) migrateToV2(sqlite);
   if (version < 3) migrateToV3(sqlite);
   if (version < 4) migrateToV4(sqlite);
+  if (version < 5) migrateToV5(sqlite);
+}
+
+/** v4 → v5: у персонажей появился вид (pc / npc) и ключ монстра-основы — только добавление столбцов. */
+function migrateToV5(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(characters)").all() as { name: string }[];
+  sqlite.transaction(() => {
+    if (!columns.some((c) => c.name === "kind")) sqlite.exec("ALTER TABLE characters ADD COLUMN kind TEXT NOT NULL DEFAULT 'pc'");
+    if (!columns.some((c) => c.name === "monster_key")) sqlite.exec("ALTER TABLE characters ADD COLUMN monster_key TEXT");
+    sqlite.pragma("user_version = 5");
+  })();
 }
 
 /** v3 → v4: у вещей магазина появился замок (locked) — только добавление столбца, данные не меняются. */

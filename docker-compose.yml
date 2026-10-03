@@ -9,6 +9,9 @@ services:
       - ACCESS_KEY=${ACCESS_KEY:-changeme}
       # Бесплатный автоперевод описаний на русский — сервис libretranslate ниже (без ключей, работает офлайн).
       - LIBRETRANSLATE_URL=http://libretranslate:5000
+      # ИИ-подсказки текста (Gemini): ключ берётся из файла .env рядом с этим файлом. Пустой — подсказки выключены.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-lite}
     volumes:
       # SQLite (app.db) и загруженные PDF лежат здесь и переживают перезапуски
       - ./data:/data

@@ -5,18 +5,25 @@ import path from "node:path";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { AUTH_COOKIE, getAccessKey } from "@/lib/auth";
 import { PDF_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
-import type { EntryGroup, EntryKind } from "@/lib/db/schema";
+import { STORY_KINDS, type EntryGroup, type EntryKind } from "@/lib/db/schema";
+import { STORY_LIMITS, type StoryInput } from "@/lib/story";
+import { AiError, generateGrounded, generateText, geminiEnabled } from "@/lib/ai/gemini";
+import { DEITY_SYSTEM_PROMPT, SYSTEM_PROMPT, buildDeityPrompt, buildStoryPrompt, parseDeity, type DeityAiRequest, type DeityFields, type StoryAiRequest } from "@/lib/ai/story-prompt";
 import { groupAllowed } from "@/lib/categories";
 import type { Item } from "@/lib/catalog";
 import { rollLoot, sanitizeConfig, type LootConfig, type LootReport } from "@/lib/loot";
 import { COLORS, ICON_KEYS, MAX_CATEGORY_NAME, customKey, defaultGroup } from "@/lib/groups";
 import { TranslationError, translationEnabled } from "@/lib/translate/engine";
 import { ensureTranslated, lookupCached, translatable } from "@/lib/translate/store";
-import { getMonster } from "@/lib/open5e";
+import { getMonster, type Monster } from "@/lib/open5e";
+import { applySpellcasting, monsterToSheet } from "@/lib/npc";
+import { parseSpellcasting, type SpellLookup } from "@/lib/npc-spells";
+import { normalizeSpellName } from "@/lib/spell-names";
+import { localize } from "@/lib/translate/view";
 import { getItems, getMonsterRaw, getSpells } from "@/lib/catalog";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
 import { WORLD_COOKIE, findEntry, requireWorld } from "@/lib/world";
@@ -164,6 +171,156 @@ export async function deleteEntry(id: number) {
   revalidateEntries();
 }
 
+// ---------- Сюжетные заметки героев ----------
+
+function cleanStory(raw: StoryInput): StoryInput | null {
+  const kind = (STORY_KINDS as readonly string[]).includes(raw.kind) ? raw.kind : null;
+  const title = String(raw.title ?? "").trim().slice(0, STORY_LIMITS.title);
+  if (!kind || !title) return null;
+  const long = (v: unknown) => String(v ?? "").slice(0, STORY_LIMITS.long);
+  const short = (v: unknown) => String(v ?? "").trim().slice(0, STORY_LIMITS.short);
+  return {
+    characterId: raw.characterId === null ? null : Number(raw.characterId),
+    kind,
+    title,
+    body: long(raw.body),
+    subject: short(raw.subject),
+    trigger: short(raw.trigger),
+    boon: long(raw.boon),
+  };
+}
+
+/** Герой должен быть из текущего мира (null — вся партия). */
+function heroInWorld(worldId: number, characterId: number | null): boolean {
+  if (characterId === null) return true;
+  return !!getDb().select({ id: schema.characters.id }).from(schema.characters).where(characterWhere(characterId, worldId)).get();
+}
+
+export type StoryAiResult = { ok: true; text: string } | { ok: false; error: string };
+
+/**
+ * ИИ-подсказка текста для заметки (Gemini). Вызывается только кнопкой в форме. Лист героя берётся на сервере,
+ * в запрос уходят лишь нужные поля. Ошибки возвращаются понятным текстом, без технических деталей.
+ */
+export async function generateStoryText(req: StoryAiRequest): Promise<StoryAiResult> {
+  const world = await requireWorld();
+  if (!geminiEnabled()) return { ok: false, error: "Подсказки выключены: добавьте GEMINI_API_KEY в файл .env и перезапустите приложение." };
+  const db = getDb();
+  const heroId = req.characterId === null ? null : Number(req.characterId);
+  const row = heroId === null ? undefined : db.select().from(schema.characters).where(characterWhere(heroId, world.id)).get();
+  const hero = row ? normalizeSheet(JSON.parse(row.data)) : null;
+  const others = db
+    .select({ title: schema.storyNotes.title })
+    .from(schema.storyNotes)
+    .where(and(eq(schema.storyNotes.worldId, world.id), heroId === null ? isNull(schema.storyNotes.characterId) : eq(schema.storyNotes.characterId, heroId)))
+    .all()
+    .map((n) => n.title);
+  try {
+    const text = await generateText({ system: SYSTEM_PROMPT, prompt: buildStoryPrompt({ ...req, target: req.target === "boon" ? "boon" : "body" }, hero, others) });
+    return { ok: true, text };
+  } catch (e) {
+    return { ok: false, error: e instanceof AiError ? e.message : "Не удалось получить подсказку. Попробуйте ещё раз." };
+  }
+}
+
+export type DeityAiResult =
+  | { ok: true; fields: DeityFields; source: string; links: { title: string; uri: string }[]; searched: boolean }
+  | { ok: false; error: string };
+
+/**
+ * «Заполнить всё» для божества: ИИ (Gemini, при желании с поиском в интернете) возвращает заголовок, название, текст, момент
+ * и баф вместе со строкой «откуда сведения: канон или придумано» и ссылками на найденные страницы.
+ */
+export async function generateDeityNote(req: DeityAiRequest): Promise<DeityAiResult> {
+  const world = await requireWorld();
+  if (!geminiEnabled()) return { ok: false, error: "Подсказки выключены: добавьте GEMINI_API_KEY в файл .env и перезапустите приложение." };
+  const subject = String(req.subject ?? "").trim().slice(0, STORY_LIMITS.short);
+  if (!subject) return { ok: false, error: "Укажите божество (например, Raven Queen): по нему ИИ ищет сведения." };
+  const db = getDb();
+  const heroId = req.characterId === null ? null : Number(req.characterId);
+  const row = heroId === null ? undefined : db.select().from(schema.characters).where(characterWhere(heroId, world.id)).get();
+  const hero = row ? normalizeSheet(JSON.parse(row.data)) : null;
+  const others = db
+    .select({ title: schema.storyNotes.title })
+    .from(schema.storyNotes)
+    .where(and(eq(schema.storyNotes.worldId, world.id), heroId === null ? isNull(schema.storyNotes.characterId) : eq(schema.storyNotes.characterId, heroId)))
+    .all()
+    .map((n) => n.title);
+  const prompt = buildDeityPrompt({ ...req, subject, search: !!req.search }, hero, others);
+  try {
+    const out = await generateGrounded({ system: DEITY_SYSTEM_PROMPT, prompt, maxTokens: 2000 });
+    const { fields, source } = parseDeity(out.text);
+    if (!fields.body && !fields.boon) return { ok: false, error: "ИИ ответил не в том формате. Нажмите кнопку ещё раз." };
+    return {
+      ok: true,
+      fields: { ...fields, subject: fields.subject || subject },
+      source,
+      links: out.sources.map((s) => ({ title: s.title, uri: s.uri })),
+      searched: out.searched,
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof AiError ? e.message : "Не удалось получить подсказку. Попробуйте ещё раз." };
+  }
+}
+
+export async function createStoryNote(input: StoryInput): Promise<number | null> {
+  const world = await requireWorld();
+  const v = cleanStory(input);
+  if (!v || !heroInWorld(world.id, v.characterId)) return null;
+  const row = getDb()
+    .insert(schema.storyNotes)
+    .values({ worldId: world.id, ...v, createdAt: new Date() })
+    .returning({ id: schema.storyNotes.id })
+    .get();
+  revalidatePath("/story");
+  return row.id;
+}
+
+export async function updateStoryNote(id: number, input: StoryInput) {
+  const world = await requireWorld();
+  const v = cleanStory(input);
+  if (!v || !heroInWorld(world.id, v.characterId)) return;
+  getDb()
+    .update(schema.storyNotes)
+    .set(v)
+    .where(and(eq(schema.storyNotes.id, id), eq(schema.storyNotes.worldId, world.id)))
+    .run();
+  revalidatePath("/story");
+}
+
+/** Отметки мастера: рассказано, баф выдан, закреплено. Для «рассказано» запоминается дата. */
+export async function setStoryFlag(id: number, flag: "told" | "boonGiven" | "pinned", value: boolean) {
+  const world = await requireWorld();
+  const patch =
+    flag === "told" ? { told: value, toldAt: value ? new Date() : null } : flag === "boonGiven" ? { boonGiven: value } : { pinned: value };
+  getDb()
+    .update(schema.storyNotes)
+    .set(patch)
+    .where(and(eq(schema.storyNotes.id, id), eq(schema.storyNotes.worldId, world.id)))
+    .run();
+  revalidatePath("/story");
+}
+
+/** Как отреагировал игрок — записывается после рассказа. */
+export async function saveStoryReaction(id: number, reaction: string) {
+  const world = await requireWorld();
+  getDb()
+    .update(schema.storyNotes)
+    .set({ reaction: reaction.slice(0, STORY_LIMITS.long) })
+    .where(and(eq(schema.storyNotes.id, id), eq(schema.storyNotes.worldId, world.id)))
+    .run();
+  revalidatePath("/story");
+}
+
+export async function deleteStoryNote(id: number) {
+  const world = await requireWorld();
+  getDb()
+    .delete(schema.storyNotes)
+    .where(and(eq(schema.storyNotes.id, id), eq(schema.storyNotes.worldId, world.id)))
+    .run();
+  revalidatePath("/story");
+}
+
 // ---------- Свои категории закладок ----------
 
 function cleanCategory(name: string, color: string, icon: string) {
@@ -288,9 +445,85 @@ export async function adjustCharacterHp(id: number, delta: number) {
 
 export async function deleteCharacter(id: number) {
   const world = await requireWorld();
-  getDb().delete(schema.characters).where(characterWhere(id, world.id)).run();
+  const db = getDb();
+  const kind = db.select({ kind: schema.characters.kind }).from(schema.characters).where(characterWhere(id, world.id)).get()?.kind;
+  db.delete(schema.characters).where(characterWhere(id, world.id)).run();
   revalidatePath("/characters");
-  redirect("/characters");
+  revalidatePath("/npcs");
+  redirect(kind === "npc" ? "/npcs" : "/characters");
+}
+
+// ---------- NPC из существ бестиария ----------
+
+export type NpcCreateInput = { name: string; backstory: string; motivation: string; monsterKey: string };
+
+/**
+ * Создаёт NPC: берёт статблок существа из бестиария (по возможности на русском), переносит его в лист персонажа
+ * (характеристики, КД, хиты, атаки, особенности) и добавляет имя, предысторию и мотивацию мастера.
+ */
+export async function createNpc(input: NpcCreateInput) {
+  const world = await requireWorld();
+  const raw = (await getMonsterRaw(input.monsterKey).catch(() => undefined)) ?? (await getMonster(input.monsterKey).catch(() => null));
+  if (!raw) throw new Error("Существо не найдено в бестиарии");
+
+  // Статблок переводится на русский: уже переведённое берётся из кэша, недостающее переводим, но не дольше 40 секунд.
+  let loc = localize("monster", raw as Monster, "ru");
+  if (loc.enabled && loc.missing.length) {
+    await Promise.race([ensureTranslated(loc.missing).catch(() => undefined), new Promise((r) => setTimeout(r, 40_000))]);
+    loc = localize("monster", raw as Monster, "ru");
+  }
+
+  const clean = (v: unknown, n: number) => String(v ?? "").slice(0, n);
+  // Заклинания разбираем по английскому оригиналу (названия нужны английские, чтобы найти их в каталоге).
+  const spellcasting = parseSpellcasting(raw as Monster, await spellLookup());
+  const sheet = monsterToSheet(
+    loc.entry,
+    {
+      name: clean(input.name, 100),
+      backstory: clean(input.backstory, STORY_LIMITS.long),
+      motivation: clean(input.motivation, STORY_LIMITS.long),
+    },
+    spellcasting,
+  );
+  const now = new Date();
+  const row = getDb()
+    .insert(schema.characters)
+    .values({ worldId: world.id, name: sheet.name, kind: "npc", monsterKey: input.monsterKey, data: JSON.stringify(sheet), createdAt: now, updatedAt: now })
+    .returning({ id: schema.characters.id })
+    .get();
+  revalidatePath("/npcs");
+  redirect(`/npcs/${row.id}`);
+}
+
+/** Поиск заклинания в каталоге по нормализованному названию (для разбора заклинаний NPC). */
+async function spellLookup(): Promise<SpellLookup> {
+  const map = new Map<string, { name: string; level: number }>();
+  for (const sp of await getSpells().catch(() => [])) {
+    const k = normalizeSpellName(sp.name);
+    // При дубликатах из разных книг берём первое (SRD обычно раньше по ключу не гарантирован — достаточно названия и круга).
+    if (!map.has(k) || sp.key.startsWith("srd")) map.set(k, { name: sp.name, level: sp.level });
+  }
+  return (n) => map.get(n);
+}
+
+/**
+ * Заполняет блоки заклинаний уже созданного NPC из статблока его существа: ячейки и списки по кругам.
+ * Не затирает то, что мастер уже вписал: заполняются только пустые круги.
+ */
+export async function importNpcSpells(id: number): Promise<{ found: number }> {
+  const world = await requireWorld();
+  const db = getDb();
+  const row = db.select().from(schema.characters).where(and(characterWhere(id, world.id), eq(schema.characters.kind, "npc"))).get();
+  if (!row?.monsterKey) return { found: 0 };
+  const raw = (await getMonsterRaw(row.monsterKey).catch(() => undefined)) ?? (await getMonster(row.monsterKey).catch(() => null));
+  if (!raw) return { found: 0 };
+  const sc = parseSpellcasting(raw as Monster, await spellLookup());
+  if (!sc) return { found: 0 };
+  const sheet = normalizeSheet(JSON.parse(row.data));
+  applySpellcasting(sheet, sc, true);
+  db.update(schema.characters).set({ data: JSON.stringify(sheet), updatedAt: new Date() }).where(characterWhere(id, world.id)).run();
+  revalidatePath("/npcs");
+  return { found: sc.lists.reduce((n, l) => n + l.length, 0) };
 }
 
 // ---------- Магазин артефактов ----------

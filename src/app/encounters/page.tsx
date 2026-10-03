@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { entryRefs, requireWorld } from "@/lib/world";
 import { getMonsterFacets, getMonsterRaw, getMonsters, type RawMonster } from "@/lib/catalog";
@@ -14,6 +14,8 @@ import { RerollButton } from "@/components/encounter/RerollButton";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
 import { hrefWith } from "@/lib/url";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const all = (v: string | string[] | undefined) => (Array.isArray(v) ? v : v ? [v] : []);
 
@@ -42,6 +44,8 @@ function Chip({
   );
 }
 
+export const metadata: Metadata = pageMeta("Столкновения", "⚔️");
+
 export default async function EncountersPage({ searchParams }: PageProps<"/encounters">) {
   await connection();
   const world = await requireWorld();
@@ -52,7 +56,7 @@ export default async function EncountersPage({ searchParams }: PageProps<"/encou
   const heroes = getDb()
     .select()
     .from(schema.characters)
-    .where(eq(schema.characters.worldId, world.id))
+    .where(and(eq(schema.characters.worldId, world.id), eq(schema.characters.kind, "pc")))
     .orderBy(asc(schema.characters.name))
     .all()
     .map((r) => ({ id: r.id, s: normalizeSheet(JSON.parse(r.data)) }));

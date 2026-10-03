@@ -28,6 +28,8 @@ import { PinButton } from "@/components/PinButton";
 import { StatBlock } from "@/components/StatBlock";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const PAGE = 100;
 
@@ -36,6 +38,12 @@ const CR_OPTIONS = CR_STEPS.map((v) => ({ value: String(v), label: v === 0.125 ?
 
 const envLabel = (key: string) => ENVIRONMENTS[key] ?? key.replace(/^./, (c) => c.toUpperCase());
 const cap = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
+
+export async function generateMetadata({ searchParams }: PageProps<"/monsters">): Promise<Metadata> {
+  const { open } = await searchParams;
+  const monster = typeof open === "string" ? await getMonsterRaw(open).catch(() => undefined) : undefined;
+  return pageMeta(monster?.name ?? "Монстры", "🐲");
+}
 
 export default async function MonstersPage({ searchParams }: PageProps<"/monsters">) {
   await connection();

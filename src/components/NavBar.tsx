@@ -8,7 +8,9 @@ import { logout } from "@/app/actions";
 const LINKS = [
   { href: "/characters", label: "🧙 Персонажи" },
   { href: "/monsters", label: "🐲 Монстры" },
+  { href: "/npcs", label: "🎭 NPC" },
   { href: "/encounters", label: "⚔️ Столкновения" },
+  { href: "/story", label: "📜 Сюжет" },
   { href: "/spells", label: "✨ Заклинания" },
   { href: "/items", label: "🗡️ Предметы" },
   { href: "/shop", label: "🏺 Магазин" },

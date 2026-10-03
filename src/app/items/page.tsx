@@ -15,8 +15,16 @@ import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
 import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const PAGE = 100;
+
+export async function generateMetadata({ searchParams }: PageProps<"/items">): Promise<Metadata> {
+  const { open } = await searchParams;
+  const item = typeof open === "string" ? (await getItems().catch(() => [])).find((i) => i.key === open) : undefined;
+  return pageMeta(item?.name ?? "Предметы", "🗡️");
+}
 
 export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
   await connection();

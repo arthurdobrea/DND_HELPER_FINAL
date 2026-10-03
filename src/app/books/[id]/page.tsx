@@ -5,6 +5,14 @@ import { getDb, schema } from "@/lib/db";
 import { worldCategories } from "@/lib/categories";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { BookViewerLoader } from "@/components/BookViewerLoader";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
+
+export async function generateMetadata({ params }: PageProps<"/books/[id]">): Promise<Metadata> {
+  const { id } = await params;
+  const book = getDb().select().from(schema.books).where(eq(schema.books.id, Number(id))).get();
+  return pageMeta(book?.title ?? "Книга", "📚");
+}
 
 export default async function BookPage({ params, searchParams }: PageProps<"/books/[id]">) {
   await connection();

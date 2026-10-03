@@ -87,6 +87,8 @@ export type CharacterSheet = {
 
   appearance: string;
   backstory: string;
+  /** Мотивация: чего хочет персонаж (особенно полезно для NPC). */
+  motivation: string;
   allies: string;
   treasure: string;
 };
@@ -137,6 +139,7 @@ export function emptySheet(name = ""): CharacterSheet {
     spells: Array.from({ length: 10 }, () => ""),
     appearance: "",
     backstory: "",
+    motivation: "",
     allies: "",
     treasure: "",
   };

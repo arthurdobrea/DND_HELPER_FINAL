@@ -68,6 +68,10 @@ export const characters = sqliteTable("characters", {
     .notNull()
     .references(() => worlds.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  /** pc — герой игрока (партия), npc — персонаж мастера, собранный из существа бестиария. */
+  kind: text("kind").$type<"pc" | "npc">().notNull().default("pc"),
+  /** Для NPC: ключ существа из каталога монстров, на котором он основан. */
+  monsterKey: text("monster_key"),
   data: text("data").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
@@ -96,6 +100,38 @@ export const shopItems = sqliteTable(
   },
   (t) => [unique().on(t.worldId, t.itemKey)],
 );
+
+export const STORY_KINDS = ["hook", "backstory", "deity", "boon"] as const;
+export type StoryKind = (typeof STORY_KINDS)[number];
+
+/**
+ * Сюжетные заметки мастера: зацепки из предыстории, факты, послания божества/покровителя, награды и бафы.
+ * characterId = null — для всей партии. Рассказано / баф выдан — отметки мастера по ходу кампании.
+ */
+export const storyNotes = sqliteTable("story_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  characterId: integer("character_id").references(() => characters.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<StoryKind>().notNull(),
+  title: text("title").notNull(),
+  /** Что сказать / рассказать игроку. */
+  body: text("body").notNull().default(""),
+  /** Божество (для послания) или с чем связано (NPC, место). */
+  subject: text("subject").notNull().default(""),
+  /** Когда рассказать: условие, момент, место. */
+  trigger: text("trigger").notNull().default(""),
+  /** Баф или награда: механика. */
+  boon: text("boon").notNull().default(""),
+  boonGiven: integer("boon_given", { mode: "boolean" }).notNull().default(false),
+  told: integer("told", { mode: "boolean" }).notNull().default(false),
+  toldAt: integer("told_at", { mode: "timestamp" }),
+  /** Что ответил / как отреагировал игрок — пишется после рассказа. */
+  reaction: text("reaction").notNull().default(""),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
 
 /** Локальная копия каталогов Open5e (заклинания, предметы) — фильтрация идёт по ней. */
 export const catalog = sqliteTable(
@@ -131,4 +167,5 @@ export type Book = typeof books.$inferSelect;
 export type WorldEntry = typeof worldEntries.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type WorldCategory = typeof worldCategories.$inferSelect;
+export type StoryNote = typeof storyNotes.$inferSelect;
 export type ShopItem = typeof shopItems.$inferSelect;

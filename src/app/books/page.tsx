@@ -5,10 +5,14 @@ import { getDb, schema } from "@/lib/db";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { UploadBook } from "@/components/UploadBook";
 import { BookActions } from "@/components/BookActions";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 function formatSize(bytes: number) {
   return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} МБ` : `${Math.ceil(bytes / 1024)} КБ`;
 }
+
+export const metadata: Metadata = pageMeta("Книги", "📚");
 
 export default async function BooksPage() {
   await connection();

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { deleteCharacter, saveCharacter } from "@/app/actions";
+import { SpellChips } from "@/components/SpellChips";
 import {
   ABILITY_KEYS,
   ABILITY_LABELS,
@@ -89,7 +90,20 @@ function DotRow({ total, count, onChange, color = "#3b2f22" }: { total: number; 
 
 // ---------- Лист ----------
 
-export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) {
+export function CharacterSheet({
+  id,
+  initial,
+  backHref = "/characters",
+  backLabel = "← Партия",
+  noun = "персонажа",
+}: {
+  id: number;
+  initial: Sheet;
+  /** Куда ведёт кнопка «назад» (для NPC — список NPC). */
+  backHref?: string;
+  backLabel?: string;
+  noun?: string;
+}) {
   const [sheet, setSheet] = useState(initial);
   const [status, setStatus] = useState<Status>("saved");
   const [hpAmount, setHpAmount] = useState("");
@@ -144,8 +158,8 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
     <div className="flex flex-col items-center gap-6 pb-10">
       {/* ---------- Панель действий ---------- */}
       <div className="no-print sticky top-[var(--header-h,49px)] z-10 flex w-full items-center gap-3 border-b border-border bg-bg/95 px-4 py-2 text-sm backdrop-blur">
-        <Link href="/characters" className="btn">
-          ← Партия
+        <Link href={backHref} className="btn">
+          {backLabel}
         </Link>
         <span className="font-display text-lg text-accent">{sheet.name || "Без имени"}</span>
         <span className={`text-xs ${status === "error" ? "text-red-400" : "text-muted"}`}>
@@ -158,7 +172,7 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
         <button
           className="btn btn-danger"
           disabled={deleting}
-          onClick={() => confirm(`Удалить персонажа «${sheet.name}»?`) && startDelete(() => deleteCharacter(id))}
+          onClick={() => confirm(`Удалить ${noun} «${sheet.name}»?`) && startDelete(() => deleteCharacter(id))}
         >
           🗑
         </button>
@@ -456,6 +470,7 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
               <div className="flex flex-col gap-2">
                 <div className="sheet-box flex flex-col gap-1.5 bg-[#3b2f22]/5 p-1.5">
                   <Area label="Черты характера" value={sheet.personality} onChange={(v) => set("personality", v)} />
+                  <Area label="Мотивация" value={sheet.motivation} onChange={(v) => set("motivation", v)} rows={2} />
                   <Area label="Идеалы" value={sheet.ideals} onChange={(v) => set("ideals", v)} rows={2} />
                   <Area label="Привязанности" value={sheet.bonds} onChange={(v) => set("bonds", v)} rows={2} />
                   <Area label="Слабости" value={sheet.flaws} onChange={(v) => set("flaws", v)} rows={2} />
@@ -512,6 +527,7 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
                   rows={8}
                   className="sheet-area"
                 />
+                <SpellChips text={sheet.spells[0]} />
               </div>
               {sheet.slots.map((slot, i) => {
                 const lvl = i + 1;
@@ -556,6 +572,7 @@ export function CharacterSheet({ id, initial }: { id: number; initial: Sheet }) 
                       rows={lvl <= 3 ? 8 : 5}
                       className="sheet-area"
                     />
+                    <SpellChips text={sheet.spells[lvl]} />
                   </div>
                 );
               })}

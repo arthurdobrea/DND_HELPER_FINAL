@@ -15,9 +15,17 @@ import { PinButton } from "@/components/PinButton";
 import { SpellCard } from "@/components/SpellCard";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
+import type { Metadata } from "next";
+import { pageMeta } from "@/lib/meta";
 
 const PAGE = 100;
 const LEVELS = Array.from({ length: 10 }, (_, l) => ({ value: String(l), label: spellLevelLabel(l) }));
+
+export async function generateMetadata({ searchParams }: PageProps<"/spells">): Promise<Metadata> {
+  const { open } = await searchParams;
+  const spell = typeof open === "string" ? (await getSpells().catch(() => [])).find((s) => s.key === open) : undefined;
+  return pageMeta(spell?.name ?? "Заклинания", "✨");
+}
 
 export default async function SpellsPage({ searchParams }: PageProps<"/spells">) {
   await connection();
