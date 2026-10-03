@@ -11,6 +11,8 @@ import { PDF_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
 import type { EntryGroup, EntryKind } from "@/lib/db/schema";
 import { groupAllowed } from "@/lib/categories";
+import type { Item } from "@/lib/catalog";
+import { rollLoot, sanitizeConfig, type LootConfig, type LootReport } from "@/lib/loot";
 import { COLORS, ICON_KEYS, MAX_CATEGORY_NAME, customKey, defaultGroup } from "@/lib/groups";
 import { TranslationError, translationEnabled } from "@/lib/translate/engine";
 import { ensureTranslated, lookupCached, translatable } from "@/lib/translate/store";
@@ -327,6 +329,51 @@ export async function addShopItems(keys: string[]) {
         .run();
     }
   });
+  revalidatePath("/shop");
+}
+
+export type RollShopResult = { added: number; report: LootReport[] };
+
+/**
+ * Рандомайзер лута: по настройкам (типы вещей, редкости, сколько штук) случайно наполняет магазин одним нажатием.
+ * При replace магазин сначала очищается — всё в одной транзакции, так что неудачный бросок ничего не ломает.
+ */
+export async function rollShop(raw: LootConfig): Promise<RollShopResult> {
+  const world = await requireWorld();
+  const cfg = sanitizeConfig(raw);
+  const db = getDb();
+  const current = db.select().from(schema.shopItems).where(eq(schema.shopItems.worldId, world.id)).all();
+  // Без очистки всё имеющееся остаётся (и не повторяется); с очисткой остаются только закреплённые 🔒.
+  const exclude = cfg.replace ? new Set<string>() : new Set(current.map((r) => r.itemKey));
+  const kept = cfg.replace ? current.filter((r) => r.locked).map((r) => JSON.parse(r.data) as Item) : [];
+  const { picks, report } = rollLoot(await getItems(), cfg, exclude, kept, new Set(current.map((r) => r.itemKey)));
+  db.transaction((tx) => {
+    if (cfg.replace) tx.delete(schema.shopItems).where(and(eq(schema.shopItems.worldId, world.id), eq(schema.shopItems.locked, false))).run();
+    for (const { item, qty } of picks) {
+      tx.insert(schema.shopItems)
+        .values({ worldId: world.id, itemKey: item.key, name: item.name, data: JSON.stringify(item), price: item.price, qty, createdAt: new Date() })
+        .onConflictDoNothing()
+        .run();
+    }
+  });
+  revalidatePath("/shop");
+  return { added: picks.length, report };
+}
+
+/** 🔒 Закрепить / открепить вещь: закреплённые рандомайзер лута не заменяет. */
+export async function toggleShopLock(id: number) {
+  const world = await requireWorld();
+  const db = getDb();
+  const row = db.select().from(schema.shopItems).where(and(eq(schema.shopItems.id, id), eq(schema.shopItems.worldId, world.id))).get();
+  if (!row) return;
+  db.update(schema.shopItems).set({ locked: !row.locked }).where(eq(schema.shopItems.id, id)).run();
+  revalidatePath("/shop");
+}
+
+/** Снять 🔒 со всех вещей мира. */
+export async function unlockShop() {
+  const world = await requireWorld();
+  getDb().update(schema.shopItems).set({ locked: false }).where(eq(schema.shopItems.worldId, world.id)).run();
   revalidatePath("/shop");
 }
 

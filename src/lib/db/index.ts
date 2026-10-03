@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS shop_items (
   data TEXT NOT NULL,
   price REAL,
   qty INTEGER,
+  locked INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   UNIQUE (world_id, item_key)
 );
@@ -98,6 +99,16 @@ function migrate(sqlite: Database.Database) {
   if (version < 1) migrateToV1(sqlite);
   if (version < 2) migrateToV2(sqlite);
   if (version < 3) migrateToV3(sqlite);
+  if (version < 4) migrateToV4(sqlite);
+}
+
+/** v3 → v4: у вещей магазина появился замок (locked) — только добавление столбца, данные не меняются. */
+function migrateToV4(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(shop_items)").all() as { name: string }[];
+  sqlite.transaction(() => {
+    if (!columns.some((c) => c.name === "locked")) sqlite.exec("ALTER TABLE shop_items ADD COLUMN locked INTEGER NOT NULL DEFAULT 0");
+    sqlite.pragma("user_version = 4");
+  })();
 }
 
 /**

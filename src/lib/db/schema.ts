@@ -90,6 +90,8 @@ export const shopItems = sqliteTable(
     data: text("data").notNull(),
     price: real("price"),
     qty: integer("qty"),
+    /** 🔒 Закреплено: рандомайзер лута не заменяет эту вещь. */
+    locked: integer("locked", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
   },
   (t) => [unique().on(t.worldId, t.itemKey)],

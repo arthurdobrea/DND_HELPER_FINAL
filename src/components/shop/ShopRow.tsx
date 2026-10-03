@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { toggleShopItem, updateShopItem } from "@/app/actions";
+import { toggleShopItem, toggleShopLock, updateShopItem } from "@/app/actions";
 
 type Props = {
   id: number;
@@ -14,6 +14,7 @@ type Props = {
   selected: boolean;
   price: number | null;
   qty: number | null;
+  locked: boolean;
 };
 
 type Vals = { price: number | null; qty: number | null };
@@ -36,7 +37,7 @@ const num = (v: string) => {
 };
 
 /** Строка товара: название, цена (зм) и остаток с кнопками −/+; сохраняется сама. */
-export function ShopRow({ id, itemKey, name, nameClass, subtitle, href, selected, price: p0, qty: q0 }: Props) {
+export function ShopRow({ id, itemKey, name, nameClass, subtitle, href, selected, price: p0, qty: q0, locked }: Props) {
   const [vals, setVals] = useState<Vals>({ price: p0, qty: q0 });
   const [pending, start] = useTransition();
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -66,11 +67,27 @@ export function ShopRow({ id, itemKey, name, nameClass, subtitle, href, selected
     };
   }, [id]);
 
+  // Замок меняется сразу, не дожидаясь сервера.
+  const [lock, setLock] = useState({ base: locked, value: locked });
+  if (lock.base !== locked) setLock({ base: locked, value: locked });
+
   const { price, qty } = vals;
   const soldOut = qty === 0;
 
   return (
-    <li className={`flex items-center gap-3 px-3 py-2 text-sm ${selected ? "bg-panel-2" : "hover:bg-panel-2/60"} ${soldOut ? "opacity-60" : ""}`}>
+    <li className={`flex items-center gap-3 px-3 py-2 text-sm ${selected ? "bg-panel-2" : "hover:bg-panel-2/60"} ${soldOut ? "opacity-60" : ""} ${lock.value ? "border-l-2 border-accent bg-accent/5" : ""}`}>
+      <button
+        type="button"
+        aria-pressed={lock.value}
+        onClick={() => {
+          setLock((l) => ({ ...l, value: !l.value }));
+          start(() => toggleShopLock(id));
+        }}
+        title={lock.value ? "Закреплено: рандомайзер оставит эту вещь. Нажмите, чтобы открепить" : "Закрепить: при броске рандомайзера эта вещь останется"}
+        className={`h-7 w-7 shrink-0 rounded-md border text-sm transition ${lock.value ? "border-accent bg-accent/20" : "border-border opacity-40 hover:opacity-100"}`}
+      >
+        {lock.value ? "🔒" : "🔓"}
+      </button>
       <Link href={href} scroll={false} className="min-w-0 flex-1">
         <span className={`block truncate ${nameClass}`}>{name}</span>
         <span className="block truncate text-xs text-muted">

@@ -15,6 +15,7 @@ import { AutoTranslate } from "@/components/translate/AutoTranslate";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, localizeMany, parseLang } from "@/lib/translate/view";
 import { ShopRow } from "@/components/shop/ShopRow";
+import { LootRoller } from "@/components/shop/LootRoller";
 import { AddAllButton, ClearShopButton, ShopDetailButton, ShopToggle } from "@/components/shop/ShopButtons";
 
 const PAGE = 60;
@@ -25,6 +26,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   const world = await requireWorld();
   const sp = await searchParams;
   const adding = sp.add === "1";
+  const rolling = sp.roll === "1" && !adding;
   const openKey = typeof sp.open === "string" ? sp.open : "";
   const limit = Math.max(PAGE, Number(sp.limit) || PAGE);
 
@@ -71,6 +73,23 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   );
 
   const openItem = openKey ? (byKey.get(openKey) ?? (inShop.get(openKey) ? snapshot(inShop.get(openKey)!) : null)) : null;
+
+  // Для рандомайзера: какие категории есть в каталоге и сколько в каждой вещей.
+  const categoryCounts = [...Map.groupBy(catalog, (i) => i.category).entries()]
+    .map(([value, list]) => ({ value, count: list.length }))
+    .sort((a, b) => label(ITEM_CATEGORIES, a.value).localeCompare(label(ITEM_CATEGORIES, b.value), "ru"));
+
+  const roller = rolling && (
+    <section className="relative order-2 border-border bg-panel p-3 lg:order-none lg:overflow-y-auto lg:border-r">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="font-display text-lg text-accent">🎲 Рандомайзер лута</h2>
+        <Link href={hrefWith("/shop", sp, { roll: null })} className="text-xs text-muted hover:text-accent">
+          закрыть ✕
+        </Link>
+      </div>
+      {catalogError ? <p className="text-sm text-red-400">Не удалось загрузить каталог: {catalogError}</p> : <LootRoller categories={categoryCounts} lockedCount={rows.filter((r) => r.locked).length} />}
+    </section>
+  );
 
   const picker = adding && (
     <section className="relative order-2 border-border bg-panel p-3 lg:order-none lg:overflow-y-auto lg:border-r">
@@ -169,8 +188,13 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
           </p>
         </div>
         {!adding && (
-          <Link href={hrefWith("/shop", sp, { add: "1" })} className="btn btn-primary">
+          <Link href={hrefWith("/shop", sp, { add: "1", roll: null })} className="btn btn-primary">
             ＋ Добавить вещи
+          </Link>
+        )}
+        {!rolling && (
+          <Link href={hrefWith("/shop", sp, { roll: "1", add: null })} className="btn" title="Случайно наполнить магазин по настройкам: типы вещей, редкость, количество">
+            🎲 Рандомайзер лута
           </Link>
         )}
         {rows.length > 0 &&
@@ -208,9 +232,16 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
         <div className="mt-10 text-center text-muted">
           <p>В магазине пока пусто.</p>
           {!adding && (
-            <Link href={hrefWith("/shop", sp, { add: "1" })} className="btn btn-primary mt-3 inline-flex">
-              ＋ Выбрать вещи из каталога
-            </Link>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              <Link href={hrefWith("/shop", sp, { add: "1", roll: null })} className="btn btn-primary">
+                ＋ Выбрать вещи из каталога
+              </Link>
+              {!rolling && (
+                <Link href={hrefWith("/shop", sp, { roll: "1", add: null })} className="btn">
+                  🎲 Случайный ассортимент
+                </Link>
+              )}
+            </div>
           )}
         </div>
       ) : (
@@ -230,6 +261,7 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
                   selected={row.itemKey === openKey}
                   price={row.price}
                   qty={row.qty}
+                  locked={row.locked}
                 />
               ))}
             </ul>
@@ -260,10 +292,11 @@ export default async function ShopPage({ searchParams }: PageProps<"/shop">) {
   return (
     <div
       className={`grid flex-1 lg:h-[calc(100dvh-var(--header-h,49px))] lg:flex-none lg:overflow-hidden ${
-        adding ? "lg:grid-cols-[340px_minmax(0,1fr)_minmax(0,420px)]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]"
+        adding || rolling ? "lg:grid-cols-[340px_minmax(0,1fr)_minmax(0,420px)]" : "lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]"
       }`}
     >
       {picker}
+      {roller}
       {shelfView}
       {detail}
     </div>
