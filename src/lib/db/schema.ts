@@ -133,6 +133,15 @@ export const storyNotes = sqliteTable("story_notes", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+/** Текущий бой мира (трекер инициативы): состояние целиком лежит JSON-ом, один бой на мир. См. lib/battle.ts. */
+export const battles = sqliteTable("battles", {
+  worldId: integer("world_id")
+    .primaryKey()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  state: text("state").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 /** Локальная копия каталогов Open5e (заклинания, предметы) — фильтрация идёт по ней. */
 export const catalog = sqliteTable(
   "catalog",

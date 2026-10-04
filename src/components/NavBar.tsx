@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/monsters", label: "🐲 Монстры" },
   { href: "/npcs", label: "🎭 NPC" },
   { href: "/encounters", label: "⚔️ Столкновения" },
+  { href: "/battle", label: "🛡️ Бой" },
   { href: "/story", label: "📜 Сюжет" },
   { href: "/spells", label: "✨ Заклинания" },
   { href: "/items", label: "🗡️ Предметы" },

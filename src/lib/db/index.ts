@@ -76,6 +76,11 @@ CREATE TABLE IF NOT EXISTS story_notes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS story_notes_world_idx ON story_notes(world_id, character_id);
+CREATE TABLE IF NOT EXISTS battles (
+  world_id INTEGER PRIMARY KEY REFERENCES worlds(id) ON DELETE CASCADE,
+  state TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS shop_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,

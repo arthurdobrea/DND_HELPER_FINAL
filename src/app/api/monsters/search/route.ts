@@ -44,6 +44,7 @@ export async function GET(request: Request) {
       crLabel: m.crLabel,
       hp: m.hp,
       ac: m.ac,
+      dex: m.abilities.dex,
       source: m.source,
     })),
   });

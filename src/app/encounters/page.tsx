@@ -11,6 +11,7 @@ import { toggleEntry } from "@/app/actions";
 import { PinButton } from "@/components/PinButton";
 import { StatBlock } from "@/components/StatBlock";
 import { RerollButton } from "@/components/encounter/RerollButton";
+import { StartBattleButton } from "@/components/encounter/StartBattleButton";
 import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
 import { hrefWith } from "@/lib/url";
@@ -246,6 +247,8 @@ export default async function EncountersPage({ searchParams }: PageProps<"/encou
                   ⚠ {n}
                 </p>
               ))}
+
+              <StartBattleButton picks={result.groups.map((g) => ({ key: g.monster.key, count: g.count }))} />
 
               <p className="text-xs text-muted">
                 Порог для {levels.length} героев (ур. {[...levels].sort((a, b) => a - b).join(", ")}): лёгкий {th[0]} · средний {th[1]} · тяжёлый {th[2]} · смертельный{" "}

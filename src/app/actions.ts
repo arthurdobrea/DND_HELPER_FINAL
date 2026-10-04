@@ -24,10 +24,12 @@ import { applySpellcasting, monsterToSheet } from "@/lib/npc";
 import { parseSpellcasting, type SpellLookup } from "@/lib/npc-spells";
 import { normalizeSpellName } from "@/lib/spell-names";
 import { localize } from "@/lib/translate/view";
-import { getItems, getMonsterRaw, getSpells } from "@/lib/catalog";
+import { getItems, getMonsterRaw, getMonsters, getSpells } from "@/lib/catalog";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
 import { WORLD_COOKIE, findEntry, requireWorld } from "@/lib/world";
-import { applyDamage, applyHeal, emptySheet, normalizeSheet, type CharacterSheet } from "@/lib/character";
+import { applyDamage, applyHeal, emptySheet, initiative, normalizeSheet, type CharacterSheet } from "@/lib/character";
+import { emptyBattle, sanitizeBattle, uid, type Battle, type Combatant, type Loot } from "@/lib/battle";
+import { rollLoot as rollMonsterLoot } from "@/lib/battle-loot";
 
 // ---------- Авторизация ----------
 
@@ -524,6 +526,112 @@ export async function importNpcSpells(id: number): Promise<{ found: number }> {
   db.update(schema.characters).set({ data: JSON.stringify(sheet), updatedAt: new Date() }).where(characterWhere(id, world.id)).run();
   revalidatePath("/npcs");
   return { found: sc.lists.reduce((n, l) => n + l.length, 0) };
+}
+
+// ---------- Трекер боя ----------
+
+/** Сохраняет текущий бой мира (автосохранение из трекера). */
+export async function saveBattle(state: Battle) {
+  const world = await requireWorld();
+  const clean = sanitizeBattle(state);
+  getDb()
+    .insert(schema.battles)
+    .values({ worldId: world.id, state: JSON.stringify(clean), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: schema.battles.worldId, set: { state: JSON.stringify(clean), updatedAt: new Date() } })
+    .run();
+}
+
+export async function clearBattle() {
+  const world = await requireWorld();
+  getDb().delete(schema.battles).where(eq(schema.battles.worldId, world.id)).run();
+  revalidatePath("/battle");
+}
+
+/** Добыча с поверженного монстра: монеты по таблицам DMG, вещь из каталога по CR и трофеи по типу существа. */
+export async function rollBattleLoot(cr: number, type: string): Promise<Loot> {
+  await requireWorld();
+  const items = await getItems().catch(() => []);
+  return rollMonsterLoot(Number(cr) || 0, String(type ?? ""), items);
+}
+
+const heroCombatant = (id: number, kind: "hero" | "npc", s: CharacterSheet, monsterKey = ""): Combatant => ({
+  id: uid(),
+  kind,
+  name: s.name || "Без имени",
+  refKey: monsterKey,
+  sheetId: id,
+  init: null,
+  dex: initiative(s),
+  ac: s.ac,
+  hp: s.hpCurrent,
+  hpMax: Math.max(1, s.hpMax),
+  conditions: [],
+  note: "",
+  cr: 0,
+  type: "",
+  loot: null,
+});
+
+/**
+ * Начинает бой из набора монстров (например, из генератора столкновений): монстры по количеству
+ * плюс все герои партии мира. Прежний бой заменяется. Затем переходит на страницу трекера.
+ */
+export async function startBattleFromMonsters(picks: { key: string; count: number }[]) {
+  const world = await requireWorld();
+  const db = getDb();
+  const catalog = new Map((await getMonsters().catch(() => [])).map((m) => [m.key, m]));
+  const combatants: Combatant[] = [];
+  for (const p of picks.slice(0, 12)) {
+    const m = catalog.get(p.key);
+    if (!m) continue;
+    const count = Math.min(20, Math.max(1, Math.floor(Number(p.count) || 1)));
+    for (let i = 0; i < count; i++) {
+      combatants.push({
+        id: uid(),
+        kind: "monster",
+        name: count > 1 ? `${m.name} ${i + 1}` : m.name,
+        refKey: m.key,
+        sheetId: 0,
+        init: null,
+        dex: Math.floor((m.abilities.dex - 10) / 2),
+        ac: m.ac,
+        hp: m.hp,
+        hpMax: m.hp,
+        conditions: [],
+        note: "",
+        cr: m.cr,
+        type: m.type,
+        loot: null,
+      });
+    }
+  }
+  const heroes = db
+    .select()
+    .from(schema.characters)
+    .where(and(eq(schema.characters.worldId, world.id), eq(schema.characters.kind, "pc")))
+    .all()
+    .map((r) => heroCombatant(r.id, "hero", normalizeSheet(JSON.parse(r.data))));
+  const state: Battle = { ...emptyBattle(), combatants: [...combatants, ...heroes] };
+  db.insert(schema.battles)
+    .values({ worldId: world.id, state: JSON.stringify(state), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: schema.battles.worldId, set: { state: JSON.stringify(state), updatedAt: new Date() } })
+    .run();
+  redirect("/battle");
+}
+
+/** Переносит текущие хиты героев и NPC из боя в их листы (после боя). */
+export async function syncBattleHp(entries: { sheetId: number; hp: number }[]) {
+  const world = await requireWorld();
+  const db = getDb();
+  for (const e of entries.slice(0, 60)) {
+    const row = db.select().from(schema.characters).where(characterWhere(Number(e.sheetId), world.id)).get();
+    if (!row) continue;
+    const sheet = normalizeSheet(JSON.parse(row.data));
+    sheet.hpCurrent = Math.max(0, Math.min(sheet.hpMax, Math.round(Number(e.hp) || 0)));
+    db.update(schema.characters).set({ data: JSON.stringify(sheet), updatedAt: new Date() }).where(characterWhere(row.id, world.id)).run();
+  }
+  revalidatePath("/characters");
+  revalidatePath("/npcs");
 }
 
 // ---------- Магазин артефактов ----------
