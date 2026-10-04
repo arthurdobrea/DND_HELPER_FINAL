@@ -133,6 +133,17 @@ export const storyNotes = sqliteTable("story_notes", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+/** Сохранённые наборы монстров для будущих столкновений. groups — JSON [{key, name, count}]. */
+export const encounterPresets = sqliteTable("encounter_presets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  groups: text("groups").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
 /** Текущий бой мира (трекер инициативы): состояние целиком лежит JSON-ом, один бой на мир. См. lib/battle.ts. */
 export const battles = sqliteTable("battles", {
   worldId: integer("world_id")

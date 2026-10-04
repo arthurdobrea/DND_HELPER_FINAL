@@ -528,6 +528,54 @@ export async function importNpcSpells(id: number): Promise<{ found: number }> {
   return { found: sc.lists.reduce((n, l) => n + l.length, 0) };
 }
 
+// ---------- Пресеты столкновений ----------
+
+export type PresetGroup = { key: string; name: string; count: number };
+
+/** Создаёт (без id) или обновляет пресет: набор монстров с количеством. Возвращает id или null, если данные некорректны. */
+export async function savePreset(input: { id?: number; name: string; groups: { key: string; count: number }[] }): Promise<number | null> {
+  const world = await requireWorld();
+  const name = String(input.name ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
+  if (!name) return null;
+  const catalog = new Map((await getMonsters().catch(() => [])).map((m) => [m.key, m]));
+  const groups: PresetGroup[] = [];
+  for (const g of (input.groups ?? []).slice(0, 12)) {
+    const m = catalog.get(g.key);
+    if (!m || groups.some((x) => x.key === g.key)) continue;
+    groups.push({ key: m.key, name: m.name, count: Math.min(30, Math.max(1, Math.floor(Number(g.count) || 1))) });
+  }
+  if (groups.length === 0) return null;
+
+  const db = getDb();
+  let id: number | null = null;
+  if (input.id) {
+    const res = db
+      .update(schema.encounterPresets)
+      .set({ name, groups: JSON.stringify(groups) })
+      .where(and(eq(schema.encounterPresets.id, Number(input.id)), eq(schema.encounterPresets.worldId, world.id)))
+      .returning({ id: schema.encounterPresets.id })
+      .get();
+    id = res?.id ?? null;
+  } else {
+    id = db
+      .insert(schema.encounterPresets)
+      .values({ worldId: world.id, name, groups: JSON.stringify(groups), createdAt: new Date() })
+      .returning({ id: schema.encounterPresets.id })
+      .get().id;
+  }
+  revalidatePath("/encounters");
+  return id;
+}
+
+export async function deletePreset(id: number) {
+  const world = await requireWorld();
+  getDb()
+    .delete(schema.encounterPresets)
+    .where(and(eq(schema.encounterPresets.id, Number(id)), eq(schema.encounterPresets.worldId, world.id)))
+    .run();
+  revalidatePath("/encounters");
+}
+
 // ---------- Трекер боя ----------
 
 /** Сохраняет текущий бой мира (автосохранение из трекера). */
