@@ -5,7 +5,8 @@ import { createStoryNote, generateDeityNote, generateStoryText, updateStoryNote 
 import type { StoryKind } from "@/lib/db/schema";
 import { STORY_LIMITS, STORY_META, STORY_ORDER, type StoryInput } from "@/lib/story";
 
-export type HeroOption = { id: number; name: string };
+/** Герой для выбора в форме; backstory — предыстория из листа (для подсказок ИИ). */
+export type HeroOption = { id: number; name: string; backstory?: string };
 
 /** Форма заметки: создание (без id) или правка (с id). Подписи полей зависят от вида заметки. */
 export function StoryForm({
@@ -64,6 +65,7 @@ export function StoryForm({
         trigger: v.trigger,
         draft: target === "body" ? v.body : v.boon,
         wishes,
+        useBackstory: withStory,
       });
       if (r.ok) setAi({ target, text: r.text });
       else setAiError(r.error);
@@ -72,6 +74,11 @@ export function StoryForm({
 
   // Исходный текст до правки ИИ — чтобы его можно было вернуть.
   const [prevBody, setPrevBody] = useState<string | null>(null);
+
+  // Галочка «использовать предысторию героя»: включена — ИИ опирается на лист героя, выключена — только на поля заметки.
+  const [useStory, setUseStory] = useState(true);
+  const heroStory = heroes.find((h) => h.id === v.characterId)?.backstory?.trim() ?? "";
+  const withStory = useStory && heroStory !== "";
 
   /**
    * Заполняет и дополняет заметку о божестве. Уже написанное учитывается: черновик текста ИИ превращает в готовый текст
@@ -96,6 +103,7 @@ export function StoryForm({
         draft: before.body,
         trigger: before.trigger,
         boon: before.boon,
+        useBackstory: withStory,
       });
       if (!r.ok) {
         setAiError(r.error);
@@ -220,6 +228,36 @@ ${ai.text}`);
         />
       </label>
 
+      {aiEnabled && v.characterId !== null && (
+        <div className="rounded-lg border border-violet-400/30 bg-violet-500/5 p-2 text-sm">
+          <label className={`flex items-start gap-2 ${heroStory ? "cursor-pointer" : "opacity-60"}`}>
+            <input
+              type="checkbox"
+              checked={withStory}
+              disabled={!heroStory}
+              onChange={(e) => setUseStory(e.target.checked)}
+              className="mt-0.5 accent-[var(--accent)]"
+            />
+            <span>
+              📖 <b>Использовать предысторию героя как основу</b>
+              <span className="block text-xs text-muted">
+                {!heroStory
+                  ? "В листе этого героя нет предыстории — заполните её во вкладке «Персонажи»."
+                  : withStory
+                    ? "ИИ возьмёт предысторию, черты, идеалы и привязанности из листа и построит заметку на них."
+                    : "Выключено: ИИ опирается только на заголовок, черновик и пожелания из полей заметки."}
+              </span>
+            </span>
+          </label>
+          {heroStory && (
+            <details className="mt-1 text-xs text-muted">
+              <summary className="cursor-pointer hover:text-accent">Показать предысторию героя</summary>
+              <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap rounded bg-bg/50 p-2 text-text/80">{heroStory}</p>
+            </details>
+          )}
+        </div>
+      )}
+
       {aiEnabled && v.kind === "deity" && (
         <div className="space-y-2 rounded-lg border border-violet-400/50 bg-violet-500/10 p-2">
           <div className="flex flex-wrap items-center gap-3">
@@ -279,7 +317,7 @@ ${ai.text}`);
               placeholder="Пожелания для ИИ: тон, детали (необязательно)"
               className="input min-w-0 flex-1 py-1 text-sm"
             />
-            <button type="button" className="btn px-3 py-1 text-sm" disabled={aiBusy || !v.title.trim()} onClick={() => ask("body")} title={v.title.trim() ? "Написать или доработать текст по заголовку, герою и божеству" : "Сначала введите заголовок"}>
+            <button type="button" className="btn px-3 py-1 text-sm" disabled={aiBusy || (!v.title.trim() && !(withStory && v.kind === "hook"))} onClick={() => ask("body")} title={v.title.trim() || (withStory && v.kind === "hook") ? "Написать или доработать текст по заголовку, герою и божеству" : "Сначала введите заголовок"}>
               {aiBusy && ai?.target !== "boon" ? "Думаю…" : v.body.trim() ? "🪄 Доработать текст" : "🪄 Подсказать текст"}
             </button>
             <button type="button" className="btn px-3 py-1 text-sm" disabled={aiBusy || !v.title.trim()} onClick={() => ask("boon")} title="Три варианта небольшого бафа или дара">

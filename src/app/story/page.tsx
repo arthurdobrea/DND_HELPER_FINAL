@@ -47,7 +47,7 @@ export default async function StoryPage({ searchParams }: PageProps<"/story">) {
     .all()
     .map((r) => ({ id: r.id, sheet: normalizeSheet(JSON.parse(r.data)) }));
   const heroName = new Map(heroRows.map((h) => [h.id, h.sheet.name || "Без имени"]));
-  const heroOptions = heroRows.map((h) => ({ id: h.id, name: h.sheet.name || "Без имени" }));
+  const heroOptions = heroRows.map((h) => ({ id: h.id, name: h.sheet.name || "Без имени", backstory: h.sheet.backstory.slice(0, 3000) }));
 
   const notes = db.select().from(schema.storyNotes).where(eq(schema.storyNotes.worldId, world.id)).orderBy(asc(schema.storyNotes.createdAt)).all();
 

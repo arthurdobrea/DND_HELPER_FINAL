@@ -13,6 +13,8 @@ export type StoryAiRequest = {
   draft: string;
   /** Пожелания мастера: тон, детали. */
   wishes: string;
+  /** Брать предысторию героя (и черты, идеалы, привязанности из листа) как основу. Выключено — только то, что написано в полях заметки. */
+  useBackstory?: boolean;
 };
 
 export const SYSTEM_PROMPT =
@@ -29,11 +31,14 @@ export function buildStoryPrompt(req: StoryAiRequest, hero: CharacterSheet | nul
   if (hero) {
     const who = [hero.race, hero.className, hero.level ? `${hero.level} уровень` : "", hero.alignment].filter(Boolean).join(", ");
     lines.push(`Герой: ${hero.name || "без имени"}${who ? ` (${who})` : ""}.`);
-    if (hero.background) lines.push(`Происхождение: ${clip(hero.background, 200)}`);
-    if (hero.backstory.trim()) lines.push(`Предыстория: ${clip(hero.backstory.trim(), 1500)}`);
-    if (hero.personality.trim()) lines.push(`Черты характера: ${clip(hero.personality.trim(), 400)}`);
-    if (hero.ideals.trim()) lines.push(`Идеалы: ${clip(hero.ideals.trim(), 400)}`);
-    if (hero.bonds.trim()) lines.push(`Привязанности: ${clip(hero.bonds.trim(), 400)}`);
+    // Предыстория и характер героя попадают в запрос только по галочке «использовать предысторию».
+    if (req.useBackstory) {
+      if (hero.background) lines.push(`Происхождение: ${clip(hero.background, 200)}`);
+      if (hero.backstory.trim()) lines.push(`Предыстория: ${clip(hero.backstory.trim(), 1500)}`);
+      if (hero.personality.trim()) lines.push(`Черты характера: ${clip(hero.personality.trim(), 400)}`);
+      if (hero.ideals.trim()) lines.push(`Идеалы: ${clip(hero.ideals.trim(), 400)}`);
+      if (hero.bonds.trim()) lines.push(`Привязанности: ${clip(hero.bonds.trim(), 400)}`);
+    }
   } else {
     lines.push("Заметка для всей партии героев.");
   }
@@ -52,15 +57,21 @@ export function buildStoryPrompt(req: StoryAiRequest, hero: CharacterSheet | nul
   } else if (req.kind === "deity") {
     lines.push(
       `Напиши послание или видение от божества${subject ? ` ${subject}` : ""} для этого героя, 3–6 предложений, ` +
-        `которое мастер зачитает игроку. Подразумевай характер божества и прошлое героя.`,
+        `которое мастер зачитает игроку. Подразумевай характер божества${req.useBackstory ? " и прошлое героя" : ""}.`,
     );
     if (req.title.trim()) lines.push(`Тема: ${clip(req.title.trim(), 200)}.`);
   } else if (req.kind === "hook") {
+    const withStory = !!req.useBackstory && !!hero?.backstory.trim();
     lines.push(
-      `Придумай, как подать герою зацепку из его предыстории: короткая сцена или реплика NPC, которую мастер расскажет игроку ` +
-        `(3–6 предложений) и которая подталкивает к действию.`,
+      withStory
+        ? `Основа — предыстория героя выше. Выбери из неё один конкретный элемент (событие, человека, потерю, долг, тайну) и построй на нём зацепку: ` +
+            `короткая сцена или реплика NPC, которую мастер расскажет игроку (3–6 предложений) и которая подталкивает к действию. ` +
+            `Не пересказывай предысторию целиком и не противоречь ей.`
+        : `Придумай зацепку для героя: короткая сцена или реплика NPC, которую мастер расскажет игроку ` +
+            `(3–6 предложений) и которая подталкивает к действию. Опирайся только на тему и данные ниже.`,
     );
-    if (req.title.trim()) lines.push(`Зацепка: ${clip(req.title.trim(), 200)}.`);
+    if (req.title.trim()) lines.push(`${withStory ? "Уточнение мастера к зацепке" : "Зацепка"}: ${clip(req.title.trim(), 200)}.`);
+    else if (withStory) lines.push("Тему мастер не задал — выбери сам наиболее интересный элемент предыстории.");
     if (subject) lines.push(`Связано с: ${subject}.`);
   } else if (req.kind === "backstory") {
     lines.push("Напиши 3–5 предложений о прошлом героя — факт, который можно раскрыть по ходу игры.");
@@ -91,6 +102,8 @@ export type DeityAiRequest = {
   draft?: string;
   trigger?: string;
   boon?: string;
+  /** Брать предысторию героя как основу (см. StoryAiRequest.useBackstory). */
+  useBackstory?: boolean;
 };
 
 export type DeityFields = { title: string; subject: string; body: string; trigger: string; boon: string };
@@ -104,13 +117,13 @@ const SECTIONS = ["ЗАГОЛОВОК", "БОЖЕСТВО", "ТЕКСТ", "КО�
 
 /** Просит заполнить все поля заметки о божестве и вернуть их в строго заданном формате с метками. */
 export function buildDeityPrompt(req: DeityAiRequest, hero: CharacterSheet | null, others: string[]): string {
-  const lines = [buildStoryPrompt({ characterId: req.characterId, kind: "deity", target: "body", title: "", subject: req.subject, trigger: "", draft: "", wishes: "" }, hero, others).split("\n\n")[0]];
+  const lines = [buildStoryPrompt({ characterId: req.characterId, kind: "deity", target: "body", title: "", subject: req.subject, trigger: "", draft: "", wishes: "", useBackstory: req.useBackstory }, hero, others).split("\n\n")[0]];
   lines.push("");
   lines.push(
     `Задача: подготовь для мастера заметку о божестве «${req.subject.trim()}» и его связи с этим героем. Заполни все поля:`,
     "[ЗАГОЛОВОК] — короткое название сцены или послания (до 8 слов).",
     "[БОЖЕСТВО] — каноническое название божества (и, если уместно, титул/сфера в скобках).",
-    "[ТЕКСТ] — послание или видение от лица божества, 3–6 предложений, которое мастер зачитает игроку; учти характер божества и прошлое героя.",
+    "[ТЕКСТ] — послание или видение от лица божества, 3–6 предложений, которое мастер зачитает игроку; учти характер божества" + (req.useBackstory ? " и прошлое героя." : "."),
     "[КОГДА] — в какой момент это лучше подать (одна строка).",
     "[БАФ] — один небольшой дар или баф по правилам D&D 5e: название и механика одним-двумя предложениями, с условием или длительностью.",
     "[ИСТОЧНИК] — одна строка: либо «Канон: <где описано божество — книга, сеттинг>», либо «Придумано ИИ: официальных сведений о божестве не найдено». Если часть данных канон, а часть выдумка — так и напиши.",
