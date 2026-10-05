@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { deleteCharacter, saveCharacter } from "@/app/actions";
 import { SpellChips } from "@/components/SpellChips";
@@ -96,6 +97,7 @@ export function CharacterSheet({
   backHref = "/characters",
   backLabel = "← Партия",
   noun = "персонажа",
+  refreshOnSpells = false,
 }: {
   id: number;
   initial: Sheet;
@@ -103,12 +105,16 @@ export function CharacterSheet({
   backHref?: string;
   backLabel?: string;
   noun?: string;
+  /** После сохранения, если изменились заклинания, обновить страницу — боковые карточки магии пересоберутся. */
+  refreshOnSpells?: boolean;
 }) {
   const [sheet, setSheet] = useState(initial);
   const [status, setStatus] = useState<Status>("saved");
   const [hpAmount, setHpAmount] = useState("");
   const [deleting, startDelete] = useTransition();
   const sheetRef = useRef(initial);
+  const router = useRouter();
+  const lastSpells = useRef(JSON.stringify([initial.spells, initial.slots.map((x) => x.max)]));
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const dirty = useRef(false);
 
@@ -118,8 +124,15 @@ export function CharacterSheet({
     dirty.current = false;
     const data = sheetRef.current;
     setStatus("saving");
+    const spellsKey = JSON.stringify([data.spells, data.slots.map((x) => x.max)]);
     saveCharacter(id, data)
-      .then(() => setStatus(dirty.current ? "dirty" : "saved"))
+      .then(() => {
+        setStatus(dirty.current ? "dirty" : "saved");
+        if (refreshOnSpells && spellsKey !== lastSpells.current) {
+          lastSpells.current = spellsKey;
+          router.refresh();
+        }
+      })
       .catch(() => setStatus("error"));
   }
 
