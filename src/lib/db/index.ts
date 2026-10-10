@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS map_pins (
   title TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL DEFAULT '#ef4444',
   photo TEXT,
+  entity_id INTEGER REFERENCES book_entities(id) ON DELETE SET NULL,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS map_pins_map_idx ON map_pins(map_id);
@@ -139,6 +140,25 @@ CREATE TABLE IF NOT EXISTS map_pin_bookmarks (
   PRIMARY KEY (pin_id, entry_id)
 );
 CREATE INDEX IF NOT EXISTS map_pin_bookmarks_entry_idx ON map_pin_bookmarks(entry_id);
+CREATE TABLE IF NOT EXISTS book_entities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL,
+  pages TEXT NOT NULL DEFAULT '[]',
+  created_at INTEGER NOT NULL,
+  UNIQUE (book_id, kind, key)
+);
+CREATE TABLE IF NOT EXISTS book_parse_chunks (
+  book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+  start_page INTEGER NOT NULL,
+  end_page INTEGER NOT NULL,
+  found INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (book_id, start_page)
+);
 CREATE TABLE IF NOT EXISTS translations_ru (
   hash TEXT PRIMARY KEY,
   src TEXT NOT NULL,
@@ -173,6 +193,16 @@ function migrate(sqlite: Database.Database) {
   if (version < 4) migrateToV4(sqlite);
   if (version < 5) migrateToV5(sqlite);
   if (version < 6) migrateToV6(sqlite);
+  if (version < 7) migrateToV7(sqlite);
+}
+
+/** v6 → v7: пин карты может ссылаться на найденного парсером персонажа/предмет (entity_id) — только добавление столбца. */
+function migrateToV7(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(map_pins)").all() as { name: string }[];
+  sqlite.transaction(() => {
+    if (!columns.some((c) => c.name === "entity_id")) sqlite.exec("ALTER TABLE map_pins ADD COLUMN entity_id INTEGER REFERENCES book_entities(id) ON DELETE SET NULL");
+    sqlite.pragma("user_version = 7");
+  })();
 }
 
 /** v5 → v6: у пинов карт появилось фото (photo) — только добавление столбца, данные не меняются. */

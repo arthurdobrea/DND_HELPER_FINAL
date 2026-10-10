@@ -4,7 +4,8 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { requireWorld, worldEntries } from "@/lib/world";
 import { MapViewerLoader } from "@/components/maps/MapViewerLoader";
-import type { BookmarkDto, PinDto } from "@/lib/maps";
+import type { BookmarkDto, EntityOption, PinDto } from "@/lib/maps";
+import type { ParsedCharacter, ParsedItem } from "@/lib/parser";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
 
@@ -39,8 +40,30 @@ export default async function MapPage({ params }: PageProps<"/maps/[id]">) {
     .filter((e) => e.bookId !== null && bookTitles.has(e.bookId))
     .map((e) => ({ id: e.id, bookId: e.bookId!, bookTitle: bookTitles.get(e.bookId!)!, page: e.page ?? 1, title: e.title, tags: e.tags }))
     .sort((a, b) => a.bookTitle.localeCompare(b.bookTitle, "ru") || a.page - b.page);
+  // Найденное парсером во всех книгах: из него можно ставить пины.
+  const entities: EntityOption[] = db
+    .select()
+    .from(schema.bookEntities)
+    .all()
+    .filter((e) => bookTitles.has(e.bookId))
+    .map((e) => {
+      const d = JSON.parse(e.data) as ParsedCharacter & ParsedItem;
+      return {
+        id: e.id,
+        kind: e.kind,
+        name: e.name,
+        bookId: e.bookId,
+        bookTitle: bookTitles.get(e.bookId)!,
+        pages: JSON.parse(e.pages) as number[],
+        sub: (e.kind === "character" ? [d.race, d.role] : [d.type, d.rarity]).filter(Boolean).join(" · "),
+        hasStats: e.kind === "character" && !!d.stats,
+        data: d,
+      };
+    })
+    .sort((a, b) => a.bookTitle.localeCompare(b.bookTitle, "ru") || (a.pages[0] ?? 0) - (b.pages[0] ?? 0));
   const initialPins: PinDto[] = pins.map((p) => ({
     id: p.id,
+    entityId: p.entityId,
     x: p.x,
     y: p.y,
     title: p.title,
@@ -50,5 +73,5 @@ export default async function MapPage({ params }: PageProps<"/maps/[id]">) {
     bookmarkIds: links.filter((l) => l.pinId === p.id).map((l) => l.entryId),
   }));
 
-  return <MapViewerLoader key={map.id} map={{ id: map.id, title: map.title, kind: map.kind, page: map.page }} initialPins={initialPins} bookmarks={bookmarks} />;
+  return <MapViewerLoader key={map.id} map={{ id: map.id, title: map.title, kind: map.kind, page: map.page }} initialPins={initialPins} bookmarks={bookmarks} entities={entities} />;
 }

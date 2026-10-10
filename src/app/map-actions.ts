@@ -7,7 +7,8 @@ import { and, eq } from "drizzle-orm";
 import { MAP_DIR } from "@/lib/config";
 import { getDb, schema } from "@/lib/db";
 import { requireWorld } from "@/lib/world";
-import { MAP_LIMITS, PIN_COLORS } from "@/lib/maps";
+import { ENTITY_COLORS, MAP_LIMITS, PIN_COLORS, type PinDto } from "@/lib/maps";
+import { entityNotes, type ParsedCharacter, type ParsedItem } from "@/lib/parser";
 
 /** Удаляет файл фото пина (если был). */
 async function rmPhoto(photo: string | null) {
@@ -60,6 +61,51 @@ export async function addPin(mapId: number, x: number, y: number): Promise<numbe
     .returning()
     .get();
   return pin.id;
+}
+
+/** Пин из найденного парсером персонажа/предмета: название, цвет и заметки (описание, характер, статблок…) заполняются сами. */
+export async function addPinFromEntity(mapId: number, entityId: number, x: number, y: number): Promise<PinDto | null> {
+  if (!(await ownMap(mapId))) return null;
+  const db = getDb();
+  const entity = db.select().from(schema.bookEntities).where(eq(schema.bookEntities.id, entityId)).get();
+  if (!entity) return null;
+  const book = db.select().from(schema.books).where(eq(schema.books.id, entity.bookId)).get();
+  const data = JSON.parse(entity.data) as ParsedCharacter | ParsedItem;
+  const pages = JSON.parse(entity.pages) as number[];
+
+  return db.transaction((tx) => {
+    const pin = tx
+      .insert(schema.mapPins)
+      .values({
+        mapId,
+        x: clamp01(x),
+        y: clamp01(y),
+        title: entity.name.slice(0, MAP_LIMITS.pinTitle),
+        color: ENTITY_COLORS[entity.kind],
+        entityId: entity.id,
+        createdAt: new Date(),
+      })
+      .returning()
+      .get();
+    const notes = entityNotes(entity.kind, data, pages, book?.title ?? "Книга").map((n) =>
+      tx
+        .insert(schema.mapPinNotes)
+        .values({ pinId: pin.id, title: n.title.slice(0, MAP_LIMITS.noteTitle), body: n.body.slice(0, MAP_LIMITS.noteBody), createdAt: new Date() })
+        .returning()
+        .get(),
+    );
+    return {
+      id: pin.id,
+      entityId: entity.id,
+      x: pin.x,
+      y: pin.y,
+      title: pin.title,
+      color: pin.color,
+      photo: null,
+      bookmarkIds: [],
+      notes: notes.map((n) => ({ id: n.id, title: n.title, body: n.body })),
+    };
+  });
 }
 
 export async function movePin(pinId: number, x: number, y: number) {

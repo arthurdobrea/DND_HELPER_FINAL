@@ -209,6 +209,8 @@ export const mapPins = sqliteTable("map_pins", {
   color: text("color").notNull().default("#ef4444"),
   /** Имя файла маленького фото пина (data/maps/pins/); null — без фото. */
   photo: text("photo"),
+  /** Откуда пин: персонаж или предмет, найденный парсером в книге (book_entities); null — пин поставлен вручную. */
+  entityId: integer("entity_id").references(() => bookEntities.id, { onDelete: "set null" }),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -237,6 +239,45 @@ export const mapPinBookmarks = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.pinId, t.entryId] })],
 );
+
+/**
+ * Результаты парсера книг: найденные в тексте персонажи и предметы. Относятся к книге (общей для всех миров).
+ * key — нормализованное имя (для склейки одного и того же героя из разных страниц), data — JSON (см. lib/parser.ts),
+ * pages — JSON-массив номеров страниц, где сущность встретилась.
+ */
+export const bookEntities = sqliteTable(
+  "book_entities",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<"character" | "item">().notNull(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    data: text("data").notNull(),
+    pages: text("pages").notNull().default("[]"),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [unique().on(t.bookId, t.kind, t.key)],
+);
+
+/** Какие окна страниц книги уже разобраны (для докачки после остановки или ошибки). */
+export const bookParseChunks = sqliteTable(
+  "book_parse_chunks",
+  {
+    bookId: integer("book_id")
+      .notNull()
+      .references(() => books.id, { onDelete: "cascade" }),
+    startPage: integer("start_page").notNull(),
+    endPage: integer("end_page").notNull(),
+    found: integer("found").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.bookId, t.startPage] })],
+);
+
+export type BookEntityRow = typeof bookEntities.$inferSelect;
 
 export type World = typeof worlds.$inferSelect;
 export type MapRow = typeof maps.$inferSelect;

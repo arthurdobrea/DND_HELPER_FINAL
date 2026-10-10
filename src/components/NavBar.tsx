@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/shop", label: "🏺 Магазин" },
   { href: "/maps", label: "🗺️ Карты" },
   { href: "/books", label: "📚 Книги" },
+  { href: "/parser", label: "🔍 Парсер" },
 ];
 
 export function NavBar({ worldName }: { worldName?: string }) {

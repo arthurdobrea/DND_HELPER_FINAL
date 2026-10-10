@@ -8,24 +8,38 @@ const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /** Понятная пользователю причина сбоя (без технических деталей и без ключа). */
 export class AiError extends Error {}
+/** Запрос отклонён фильтром безопасности Gemini (а не сбоем сети или лимитом). */
+export class AiBlockedError extends AiError {}
+
+/**
+ * Для разбора книг фильтры безопасности ослаблены: в приключениях полно вампиров, убийств и ритуалов,
+ * и модель иначе отказывается читать целые страницы. Модель только выписывает факты из текста книги пользователя.
+ */
+const RELAXED_SAFETY = ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"].map((category) => ({
+  category,
+  threshold: "BLOCK_NONE",
+}));
 
 export function geminiEnabled(): boolean {
   return (process.env.GEMINI_API_KEY ?? "").trim() !== "";
 }
 
-type Request = { system: string; prompt: string; maxTokens?: number; temperature?: number };
+type Request = { system: string; prompt: string; maxTokens?: number; temperature?: number; /** Ответ строго в JSON (responseMimeType). */ json?: boolean };
 export type Source = { title: string; uri: string };
 export type Generated = { text: string; sources: Source[]; searched: boolean };
 
 type ApiResponse = {
   candidates?: {
+    finishReason?: string;
     content?: { parts?: { text?: string }[] };
     groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
   }[];
   promptFeedback?: { blockReason?: string };
 };
 
-async function call({ system, prompt, maxTokens = 1200, temperature = 0.9 }: Request, search: boolean): Promise<Response> {
+const BLOCKED_FINISH = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY", "RECITATION"]);
+
+async function call({ system, prompt, maxTokens = 1200, temperature = 0.9, json = false }: Request, search: boolean): Promise<Response> {
   const key = (process.env.GEMINI_API_KEY ?? "").trim();
   if (!key) throw new AiError("Не задан GEMINI_API_KEY: добавьте ключ в файл .env и перезапустите приложение.");
   const model = (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_MODEL;
@@ -37,7 +51,8 @@ async function call({ system, prompt, maxTokens = 1200, temperature = 0.9 }: Req
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature, maxOutputTokens: maxTokens },
+        generationConfig: { temperature, maxOutputTokens: maxTokens, ...(json ? { responseMimeType: "application/json" } : {}) },
+        ...(json ? { safetySettings: RELAXED_SAFETY } : {}),
         // Поиск Google: модель сама ищет в интернете сведения (например, о божестве в официальных материалах D&D).
         ...(search ? { tools: [{ google_search: {} }] } : {}),
       }),
@@ -58,9 +73,10 @@ function failure(res: Response): AiError {
 }
 
 function read(json: ApiResponse | null, searched: boolean): Generated {
-  if (json?.promptFeedback?.blockReason) throw new AiError("Gemini отказался отвечать на этот запрос (фильтр безопасности). Переформулируйте пожелания.");
+  if (json?.promptFeedback?.blockReason) throw new AiBlockedError("Gemini отказался отвечать на этот запрос (фильтр безопасности). Переформулируйте пожелания.");
   const cand = json?.candidates?.[0];
   const text = cand?.content?.parts?.map((p) => p.text ?? "").join("").trim();
+  if (!text && cand?.finishReason && BLOCKED_FINISH.has(cand.finishReason)) throw new AiBlockedError("Gemini отказался отвечать на этот запрос (фильтр безопасности). Переформулируйте пожелания.");
   if (!text) throw new AiError("Gemini вернул пустой ответ. Попробуйте ещё раз.");
   const seen = new Set<string>();
   const sources: Source[] = [];
@@ -76,6 +92,13 @@ function read(json: ApiResponse | null, searched: boolean): Generated {
 
 export async function generateText(req: Request): Promise<string> {
   const res = await call(req, false);
+  if (!res.ok) throw failure(res);
+  return read((await res.json().catch(() => null)) as ApiResponse | null, false).text;
+}
+
+/** Ответ модели в формате JSON (для извлечения данных). Возвращает «сырой» текст ответа — разбирает вызывающий код. */
+export async function generateJson(req: Omit<Request, "json">): Promise<string> {
+  const res = await call({ ...req, json: true }, false);
   if (!res.ok) throw failure(res);
   return read((await res.json().catch(() => null)) as ApiResponse | null, false).text;
 }

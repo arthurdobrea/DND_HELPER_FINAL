@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import { addPin, addPinNote, deletePin, deletePinNote, movePin, removePinPhoto, setMapPage, togglePinBookmark, updatePin, updatePinNote } from "@/app/map-actions";
-import { MAP_LIMITS, PIN_COLORS, type BookmarkDto, type PinDto, type PinNoteDto, pinTextColor } from "@/lib/maps";
+import { addPin, addPinFromEntity, addPinNote, deletePin, deletePinNote, movePin, removePinPhoto, setMapPage, togglePinBookmark, updatePin, updatePinNote } from "@/app/map-actions";
+import { MAP_LIMITS, PIN_COLORS, type BookmarkDto, type EntityOption, type PinDto, type PinNoteDto, pinTextColor } from "@/lib/maps";
 import PdfPane from "@/components/PdfPane";
+import { CharacterSheet, ItemSheet } from "@/components/parser/EntityBrowser";
+import type { ParsedCharacter, ParsedItem } from "@/lib/parser";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -36,9 +38,11 @@ type Props = {
   initialPins: PinDto[];
   /** Закладки-страницы книг этого мира — их можно прикреплять к пинам. */
   bookmarks: BookmarkDto[];
+  /** Найденные парсером персонажи и предметы — их можно ставить на карту. */
+  entities: EntityOption[];
 };
 
-export default function MapViewer({ map, initialPins, bookmarks }: Props) {
+export default function MapViewer({ map, initialPins, bookmarks, entities }: Props) {
   const [pins, setPins] = useState<PinDto[]>(initialPins);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [placing, setPlacing] = useState(true);
@@ -46,6 +50,10 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
   const [page, setPage] = useState(map.page);
   const [numPages, setNumPages] = useState(0);
   const [reader, setReader] = useState<BookmarkDto | null>(null);
+  const [asideTab, setAsideTab] = useState<"pins" | "book">("pins");
+  /** Выбранный в «Из книг» объект: следующий клик по карте поставит его пином. */
+  const [pending, setPending] = useState<EntityOption | null>(null);
+  const [sheet, setSheet] = useState<EntityOption | null>(null);
   const [width, setWidth] = useState(800);
   const scrollRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -74,7 +82,26 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
     return { x: Math.min(1, Math.max(0, (clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (clientY - r.top) / r.height)) };
   }
 
+  // Esc отменяет расстановку выбранного из книги.
+  useEffect(() => {
+    if (!pending) return;
+    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setPending(null);
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [pending]);
+
   async function onSurfaceClick(e: React.MouseEvent) {
+    if (pending) {
+      const { x, y } = fraction(e.clientX, e.clientY);
+      const entity = pending;
+      setPending(null);
+      const pin = await addPinFromEntity(map.id, entity.id, x, y);
+      if (pin) {
+        setPins((ps) => [...ps, pin]);
+        setSelectedId(pin.id);
+      }
+      return;
+    }
     if (!placing) {
       setSelectedId(null);
       return;
@@ -82,7 +109,7 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
     const { x, y } = fraction(e.clientX, e.clientY);
     const id = await addPin(map.id, x, y);
     if (id === null) return;
-    setPins((ps) => [...ps, { id, x, y, title: "", color: PIN_COLORS[0], notes: [], bookmarkIds: [], photo: null }]);
+    setPins((ps) => [...ps, { id, x, y, title: "", color: PIN_COLORS[0], notes: [], bookmarkIds: [], photo: null, entityId: null }]);
     setSelectedId(id);
   }
 
@@ -169,11 +196,21 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
           <span className="ml-auto text-xs text-muted">Пин можно перетащить</span>
         </div>
 
+        {pending && (
+          <div className="flex items-center gap-2 border-b border-accent bg-panel-2 px-3 py-1.5 text-sm">
+            <span>
+              {pending.kind === "character" ? "🧙" : "🗡️"} Кликните по карте, чтобы поставить «<b>{pending.name}</b>»
+            </span>
+            <button className="btn ml-auto" onClick={() => setPending(null)}>
+              Отмена (Esc)
+            </button>
+          </div>
+        )}
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-panel-2">
           <div
             ref={surfaceRef}
             onClick={onSurfaceClick}
-            className={`relative mx-auto select-none ${placing ? "cursor-crosshair" : "cursor-default"}`}
+            className={`relative mx-auto select-none ${placing || pending ? "cursor-crosshair" : "cursor-default"}`}
             style={{ width: width * zoom }}
           >
             {map.kind === "image" ? (
@@ -260,10 +297,28 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
             onNewNote={() => newNote(selected)}
             bookmarks={bookmarks}
             onRead={setReader}
+            entity={entities.find((e) => e.id === selected.entityId) ?? null}
+            onSheet={setSheet}
           />
         ) : (
           <div className="p-3">
-            <h2 className="font-display text-lg text-accent">Пины ({pins.length})</h2>
+            <div className="mb-3 flex gap-1">
+              {(["pins", "book"] as const).map((t) => (
+                <button key={t} className={`btn flex-1 ${asideTab === t ? "border-accent text-accent" : ""}`} onClick={() => setAsideTab(t)}>
+                  {t === "pins" ? `📍 Пины (${pins.length})` : `📚 Из книг (${entities.length})`}
+                </button>
+              ))}
+            </div>
+            {asideTab === "book" ? (
+              <EntityPanel
+                entities={entities}
+                placedIds={new Set(pins.map((p) => p.entityId).filter((x): x is number => x !== null))}
+                pendingId={pending?.id ?? null}
+                onPick={(e) => setPending((cur) => (cur?.id === e.id ? null : e))}
+                onSheet={setSheet}
+              />
+            ) : (
+              <>
             {pins.length === 0 ? (
               <p className="mt-2 text-sm text-muted">Кликните по карте, чтобы поставить первый пин, и впишите в него детали сюжета.</p>
             ) : (
@@ -288,10 +343,13 @@ export default function MapViewer({ map, initialPins, bookmarks }: Props) {
                 ))}
               </ul>
             )}
+              </>
+            )}
           </div>
         )}
       </aside>
 
+      {sheet && <EntitySheetModal entity={sheet} onClose={() => setSheet(null)} />}
       {reader && <BookmarkReader key={reader.id} bookmark={reader} onClose={() => setReader(null)} />}
     </div>
   );
@@ -350,6 +408,8 @@ function PinEditor({
   onNewNote,
   bookmarks,
   onRead,
+  entity,
+  onSheet,
 }: {
   pin: PinDto;
   index: number;
@@ -359,6 +419,8 @@ function PinEditor({
   onNewNote: () => void;
   bookmarks: BookmarkDto[];
   onRead: (b: BookmarkDto) => void;
+  entity: EntityOption | null;
+  onSheet: (e: EntityOption) => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [query, setQuery] = useState("");
@@ -388,6 +450,22 @@ function PinEditor({
           🗑
         </button>
       </div>
+
+      {entity && (
+        <div className="card flex items-center gap-2 p-2">
+          <span className="text-xl">{entity.kind === "character" ? "🧙" : "🗡️"}</span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm">{entity.name}</div>
+            <div className="truncate text-xs text-muted">
+              {entity.bookTitle}
+              {entity.pages.length > 0 && ` · стр. ${entity.pages.join(", ")}`}
+            </div>
+          </div>
+          <button className="btn" onClick={() => onSheet(entity)}>
+            📖 Лист
+          </button>
+        </div>
+      )}
 
       <PinPhoto pin={pin} onPatch={onPatch} />
 
@@ -575,6 +653,121 @@ function PinPhoto({ pin, onPatch }: { pin: PinDto; onPatch: (patch: Partial<PinD
           </button>
         )}
         {error && <span className="text-xs text-red-400">{error}</span>}
+      </div>
+    </div>
+  );
+}
+
+/** Список найденного парсером: фильтры, поиск; клик по строке — поставить пин, «📖» — открыть лист. */
+function EntityPanel({
+  entities,
+  placedIds,
+  pendingId,
+  onPick,
+  onSheet,
+}: {
+  entities: EntityOption[];
+  placedIds: Set<number>;
+  pendingId: number | null;
+  onPick: (e: EntityOption) => void;
+  onSheet: (e: EntityOption) => void;
+}) {
+  const [kind, setKind] = useState<"character" | "item">("character");
+  const [query, setQuery] = useState("");
+  const [bookId, setBookId] = useState(0);
+  const [onlyStats, setOnlyStats] = useState(false);
+
+  const books = useMemo(() => [...new Map(entities.map((e) => [e.bookId, e.bookTitle])).entries()], [entities]);
+  const q = query.trim().toLowerCase();
+  const shown = entities.filter(
+    (e) => e.kind === kind && (!bookId || e.bookId === bookId) && (!onlyStats || e.hasStats) && (!q || `${e.name} ${e.sub}`.toLowerCase().includes(q)),
+  );
+
+  if (entities.length === 0) {
+    return (
+      <p className="text-sm text-muted">
+        Парсер пока ничего не нашёл. Разберите книгу во вкладке <Link href="/parser" className="text-accent underline">«Парсер»</Link> — найденные персонажи и предметы появятся здесь.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1">
+        {(["character", "item"] as const).map((k) => (
+          <button key={k} className={`btn flex-1 ${kind === k ? "border-accent text-accent" : ""}`} onClick={() => setKind(k)}>
+            {k === "character" ? "🧙 Персонажи" : "🗡️ Предметы"} ({entities.filter((e) => e.kind === k).length})
+          </button>
+        ))}
+      </div>
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск по имени…" className="input w-full text-sm" />
+      <div className="flex items-center gap-2 text-xs text-muted">
+        {books.length > 1 && (
+          <select value={bookId} onChange={(e) => setBookId(Number(e.target.value))} className="input min-w-0 flex-1 py-1 text-xs">
+            <option value={0}>Все книги</option>
+            {books.map(([id, title]) => (
+              <option key={id} value={id}>
+                {title}
+              </option>
+            ))}
+          </select>
+        )}
+        {kind === "character" && (
+          <label className="ml-auto flex shrink-0 items-center gap-1">
+            <input type="checkbox" checked={onlyStats} onChange={(e) => setOnlyStats(e.target.checked)} /> со статблоком
+          </label>
+        )}
+      </div>
+      <p className="text-xs text-muted">Нажмите на строку, затем кликните по карте — пин встанет с готовыми заметками из книги.</p>
+      <ul className="space-y-1">
+        {shown.map((e) => (
+          <li key={e.id} className="flex gap-1">
+            <button
+              className={`flex min-w-0 flex-1 items-center gap-2 rounded-md border px-2 py-1.5 text-left ${pendingId === e.id ? "border-accent bg-panel-2" : "border-border hover:border-accent"}`}
+              onClick={() => onPick(e)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm">{e.name}</span>
+                <span className="block truncate text-xs text-muted">
+                  {e.sub || e.bookTitle}
+                  {e.pages.length > 0 && ` · стр. ${e.pages[0]}`}
+                </span>
+              </span>
+              {placedIds.has(e.id) && <span className="shrink-0 text-xs text-accent">📍 на карте</span>}
+            </button>
+            <button className="btn" onClick={() => onSheet(e)} title="Открыть лист">
+              📖
+            </button>
+          </li>
+        ))}
+        {shown.length === 0 && <li className="p-2 text-sm text-muted">Ничего не найдено</li>}
+      </ul>
+    </div>
+  );
+}
+
+/** Лист найденного персонажа или предмета (как в парсере). */
+function EntitySheetModal({ entity, onClose }: { entity: EntityOption; onClose: () => void }) {
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [onClose]);
+  const dto = { id: entity.id, name: entity.name, pages: entity.pages };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-3" onClick={onClose}>
+      <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 flex justify-end">
+          <button className="btn" onClick={onClose}>
+            ✕ Закрыть
+          </button>
+        </div>
+        {entity.kind === "character" ? (
+          <CharacterSheet e={{ ...dto, data: entity.data as ParsedCharacter }} bookId={entity.bookId} />
+        ) : (
+          <ItemSheet e={{ ...dto, data: entity.data as ParsedItem }} bookId={entity.bookId} />
+        )}
       </div>
     </div>
   );
