@@ -14,7 +14,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Не трогаем статику и страницу логина.
-  // /api/books/upload исключён: proxy буферизует тело запроса (лимит 10MB),
+  // /api/books/upload и /api/maps/upload исключены: proxy буферизует тело запроса (лимит 10MB),
   // а PDF-книги бывают по сотне мегабайт — авторизация проверяется в самом хендлере.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/books/upload).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/books/upload|api/maps/upload).*)"],
 };

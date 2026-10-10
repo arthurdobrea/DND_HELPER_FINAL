@@ -182,7 +182,49 @@ export const translationsRu = sqliteTable("translations_ru", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
+/** Карты мира: изображение (jpg/png/webp) или PDF; файл лежит в data/maps. page — какая страница PDF показывается. */
+export const maps = sqliteTable("maps", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  kind: text("kind").$type<"image" | "pdf">().notNull(),
+  fileName: text("file_name").notNull(),
+  mime: text("mime").notNull(),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  page: integer("page").notNull().default(1),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Пин на карте. x и y — доли ширины и высоты карты (0…1), поэтому не зависят от масштаба. */
+export const mapPins = sqliteTable("map_pins", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  mapId: integer("map_id")
+    .notNull()
+    .references(() => maps.id, { onDelete: "cascade" }),
+  x: real("x").notNull(),
+  y: real("y").notNull(),
+  title: text("title").notNull().default(""),
+  color: text("color").notNull().default("#ef4444"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Подробности пина: у каждого пина сколько угодно записей (сюжет, секреты, NPC, ловушки…). */
+export const mapPinNotes = sqliteTable("map_pin_notes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  pinId: integer("pin_id")
+    .notNull()
+    .references(() => mapPins.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
 export type World = typeof worlds.$inferSelect;
+export type MapRow = typeof maps.$inferSelect;
+export type MapPin = typeof mapPins.$inferSelect;
+export type MapPinNote = typeof mapPinNotes.$inferSelect;
 export type Book = typeof books.$inferSelect;
 export type WorldEntry = typeof worldEntries.$inferSelect;
 export type Character = typeof characters.$inferSelect;

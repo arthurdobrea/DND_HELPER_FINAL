@@ -15,6 +15,7 @@ const LINKS = [
   { href: "/spells", label: "✨ Заклинания" },
   { href: "/items", label: "🗡️ Предметы" },
   { href: "/shop", label: "🏺 Магазин" },
+  { href: "/maps", label: "🗺️ Карты" },
   { href: "/books", label: "📚 Книги" },
 ];
 

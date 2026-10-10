@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import Database from "better-sqlite3";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { DATA_DIR, DB_PATH, PDF_DIR } from "@/lib/config";
+import { DATA_DIR, DB_PATH, MAP_DIR, PDF_DIR } from "@/lib/config";
 import * as schema from "./schema";
 
 type Db = BetterSQLite3Database<typeof schema>;
@@ -101,6 +101,36 @@ CREATE TABLE IF NOT EXISTS shop_items (
   created_at INTEGER NOT NULL,
   UNIQUE (world_id, item_key)
 );
+CREATE TABLE IF NOT EXISTS maps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  page INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS maps_world_idx ON maps(world_id);
+CREATE TABLE IF NOT EXISTS map_pins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  map_id INTEGER NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#ef4444',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS map_pins_map_idx ON map_pins(map_id);
+CREATE TABLE IF NOT EXISTS map_pin_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pin_id INTEGER NOT NULL REFERENCES map_pins(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS map_pin_notes_pin_idx ON map_pin_notes(pin_id);
 CREATE TABLE IF NOT EXISTS translations_ru (
   hash TEXT PRIMARY KEY,
   src TEXT NOT NULL,
@@ -245,6 +275,7 @@ function migrateToV1(sqlite: Database.Database) {
 function openSqlite(): Database.Database {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.mkdirSync(PDF_DIR, { recursive: true });
+  fs.mkdirSync(MAP_DIR, { recursive: true });
   const sqlite = new Database(DB_PATH);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
