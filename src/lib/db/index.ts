@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS map_pins (
   y REAL NOT NULL,
   title TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL DEFAULT '#ef4444',
+  photo TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS map_pins_map_idx ON map_pins(map_id);
@@ -131,6 +132,13 @@ CREATE TABLE IF NOT EXISTS map_pin_notes (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS map_pin_notes_pin_idx ON map_pin_notes(pin_id);
+CREATE TABLE IF NOT EXISTS map_pin_bookmarks (
+  pin_id INTEGER NOT NULL REFERENCES map_pins(id) ON DELETE CASCADE,
+  entry_id INTEGER NOT NULL REFERENCES world_entries(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (pin_id, entry_id)
+);
+CREATE INDEX IF NOT EXISTS map_pin_bookmarks_entry_idx ON map_pin_bookmarks(entry_id);
 CREATE TABLE IF NOT EXISTS translations_ru (
   hash TEXT PRIMARY KEY,
   src TEXT NOT NULL,
@@ -164,6 +172,16 @@ function migrate(sqlite: Database.Database) {
   if (version < 3) migrateToV3(sqlite);
   if (version < 4) migrateToV4(sqlite);
   if (version < 5) migrateToV5(sqlite);
+  if (version < 6) migrateToV6(sqlite);
+}
+
+/** v5 → v6: у пинов карт появилось фото (photo) — только добавление столбца, данные не меняются. */
+function migrateToV6(sqlite: Database.Database) {
+  const columns = sqlite.prepare("PRAGMA table_info(map_pins)").all() as { name: string }[];
+  sqlite.transaction(() => {
+    if (!columns.some((c) => c.name === "photo")) sqlite.exec("ALTER TABLE map_pins ADD COLUMN photo TEXT");
+    sqlite.pragma("user_version = 6");
+  })();
 }
 
 /** v4 → v5: у персонажей появился вид (pc / npc) и ключ монстра-основы — только добавление столбцов. */

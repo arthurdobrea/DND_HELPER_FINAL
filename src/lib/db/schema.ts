@@ -207,6 +207,8 @@ export const mapPins = sqliteTable("map_pins", {
   y: real("y").notNull(),
   title: text("title").notNull().default(""),
   color: text("color").notNull().default("#ef4444"),
+  /** Имя файла маленького фото пина (data/maps/pins/); null — без фото. */
+  photo: text("photo"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
@@ -220,6 +222,21 @@ export const mapPinNotes = sqliteTable("map_pin_notes", {
   body: text("body").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
+
+/** Закладки книг (страницы PDF из world_entries), прикреплённые к пину карты. */
+export const mapPinBookmarks = sqliteTable(
+  "map_pin_bookmarks",
+  {
+    pinId: integer("pin_id")
+      .notNull()
+      .references(() => mapPins.id, { onDelete: "cascade" }),
+    entryId: integer("entry_id")
+      .notNull()
+      .references(() => worldEntries.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.pinId, t.entryId] })],
+);
 
 export type World = typeof worlds.$inferSelect;
 export type MapRow = typeof maps.$inferSelect;

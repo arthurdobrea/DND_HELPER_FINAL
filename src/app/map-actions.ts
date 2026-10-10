@@ -9,6 +9,11 @@ import { getDb, schema } from "@/lib/db";
 import { requireWorld } from "@/lib/world";
 import { MAP_LIMITS, PIN_COLORS } from "@/lib/maps";
 
+/** Удаляет файл фото пина (если был). */
+async function rmPhoto(photo: string | null) {
+  if (photo) await fs.rm(path.join(MAP_DIR, "pins", path.basename(photo)), { force: true });
+}
+
 /** Карта должна принадлежать текущему миру — иначе действие молча игнорируется. */
 async function ownMap(mapId: number) {
   const world = await requireWorld();
@@ -34,7 +39,9 @@ export async function renameMap(id: number, title: string) {
 export async function deleteMap(id: number) {
   const map = await ownMap(id);
   if (!map) return;
+  const photos = getDb().select({ photo: schema.mapPins.photo }).from(schema.mapPins).where(eq(schema.mapPins.mapId, id)).all();
   getDb().delete(schema.maps).where(eq(schema.maps.id, id)).run();
+  for (const { photo } of photos) await rmPhoto(photo);
   await fs.rm(path.join(MAP_DIR, path.basename(map.fileName)), { force: true });
   refresh();
 }
@@ -70,8 +77,38 @@ export async function updatePin(pinId: number, title: string, color: string) {
 }
 
 export async function deletePin(pinId: number) {
-  if (!(await ownPin(pinId))) return;
+  const pin = await ownPin(pinId);
+  if (!pin) return;
   getDb().delete(schema.mapPins).where(eq(schema.mapPins.id, pinId)).run();
+  await rmPhoto(pin.photo);
+}
+
+export async function removePinPhoto(pinId: number) {
+  const pin = await ownPin(pinId);
+  if (!pin) return;
+  getDb().update(schema.mapPins).set({ photo: null }).where(eq(schema.mapPins.id, pinId)).run();
+  await rmPhoto(pin.photo);
+}
+
+/** Прикрепить закладку книги к пину / открепить (повторный вызов). Закладка должна быть из текущего мира. */
+export async function togglePinBookmark(pinId: number, entryId: number): Promise<boolean | null> {
+  const pin = await ownPin(pinId);
+  if (!pin) return null;
+  const world = await requireWorld();
+  const db = getDb();
+  const entry = db
+    .select()
+    .from(schema.worldEntries)
+    .where(and(eq(schema.worldEntries.id, entryId), eq(schema.worldEntries.worldId, world.id), eq(schema.worldEntries.kind, "page")))
+    .get();
+  if (!entry) return null;
+  const link = and(eq(schema.mapPinBookmarks.pinId, pinId), eq(schema.mapPinBookmarks.entryId, entryId));
+  if (db.select().from(schema.mapPinBookmarks).where(link).get()) {
+    db.delete(schema.mapPinBookmarks).where(link).run();
+    return false;
+  }
+  db.insert(schema.mapPinBookmarks).values({ pinId, entryId, createdAt: new Date() }).run();
+  return true;
 }
 
 export async function addPinNote(pinId: number): Promise<number | null> {
