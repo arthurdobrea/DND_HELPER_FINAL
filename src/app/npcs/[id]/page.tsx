@@ -14,6 +14,7 @@ import { StatBlock } from "@/components/StatBlock";
 import { ImportSpellsButton } from "@/components/npc/ImportSpellsButton";
 import { NpcCards } from "@/components/npc/NpcCards";
 import { buildCards } from "@/lib/npc-actions";
+import { CharacterLocations } from "@/components/story/CharacterLocations";
 
 export async function generateMetadata({ params }: PageProps<"/npcs/[id]">): Promise<Metadata> {
   const world = await getCurrentWorld();
@@ -52,6 +53,7 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
 
   return (
     <div>
+      <CharacterLocations characterId={row.id} />
       {row.monsterKey && (
         <div className="mx-auto mt-3 w-full max-w-3xl px-4">
           <ImportSpellsButton id={row.id} />

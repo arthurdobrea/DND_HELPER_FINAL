@@ -9,6 +9,7 @@ import { STORY_META, STORY_ORDER } from "@/lib/story";
 import { hrefWith } from "@/lib/url";
 import { geminiEnabled } from "@/lib/ai/gemini";
 import { StoryCard, type StoryCardData } from "@/components/story/StoryCard";
+import { StoryTabs } from "@/components/story/StoryTabs";
 import { NewStory } from "@/components/story/NewStory";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
@@ -131,6 +132,7 @@ export default async function StoryPage({ searchParams }: PageProps<"/story">) {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4 lg:flex-row">
       {/* ---------- Герои ---------- */}
       <aside className="w-full shrink-0 space-y-1 lg:sticky lg:top-[calc(var(--header-h,49px)+1rem)] lg:w-64 lg:self-start">
+        <StoryTabs active="notes" />
         <h1 className="mb-2 font-display text-2xl text-accent">📜 Сюжет героев</h1>
         {(
           [

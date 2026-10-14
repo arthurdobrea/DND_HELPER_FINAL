@@ -279,6 +279,62 @@ export const bookParseChunks = sqliteTable(
 
 export type BookEntityRow = typeof bookEntities.$inferSelect;
 
+/** Локации сюжета: места, куда идёт партия. Внутри — события (что там происходит) и персонажи (кто там находится). */
+export const storyLocations = sqliteTable("story_locations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  /** Описание места: что видят герои, атмосфера, общая канва. */
+  summary: text("summary").notNull().default(""),
+  /** planned — планируется, current — партия сейчас здесь, visited — посещена. */
+  status: text("status").$type<"planned" | "current" | "visited">().notNull().default("planned"),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** События локации: заготовки к сессии и записи о том, что произошло. */
+export const storyEvents = sqliteTable("story_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  locationId: integer("location_id")
+    .notNull()
+    .references(() => storyLocations.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default(""),
+  body: text("body").notNull().default(""),
+  /** Метка сессии, например «Сессия 5» (необязательно). */
+  session: text("session").notNull().default(""),
+  happened: integer("happened", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Кто находится в локации (герои и NPC мира). */
+export const storyLocationCharacters = sqliteTable(
+  "story_location_characters",
+  {
+    locationId: integer("location_id")
+      .notNull()
+      .references(() => storyLocations.id, { onDelete: "cascade" }),
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.locationId, t.characterId] })],
+);
+
+/** Кто участвует в событии. */
+export const storyEventCharacters = sqliteTable(
+  "story_event_characters",
+  {
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => storyEvents.id, { onDelete: "cascade" }),
+    characterId: integer("character_id")
+      .notNull()
+      .references(() => characters.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.characterId] })],
+);
+
 export type World = typeof worlds.$inferSelect;
 export type MapRow = typeof maps.$inferSelect;
 export type MapPin = typeof mapPins.$inferSelect;

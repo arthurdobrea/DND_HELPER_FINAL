@@ -159,6 +159,37 @@ CREATE TABLE IF NOT EXISTS book_parse_chunks (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (book_id, start_page)
 );
+CREATE TABLE IF NOT EXISTS story_locations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'planned',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS story_locations_world_idx ON story_locations(world_id);
+CREATE TABLE IF NOT EXISTS story_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  location_id INTEGER NOT NULL REFERENCES story_locations(id) ON DELETE CASCADE,
+  title TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',
+  session TEXT NOT NULL DEFAULT '',
+  happened INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS story_events_location_idx ON story_events(location_id);
+CREATE TABLE IF NOT EXISTS story_location_characters (
+  location_id INTEGER NOT NULL REFERENCES story_locations(id) ON DELETE CASCADE,
+  character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  PRIMARY KEY (location_id, character_id)
+);
+CREATE INDEX IF NOT EXISTS story_location_characters_char_idx ON story_location_characters(character_id);
+CREATE TABLE IF NOT EXISTS story_event_characters (
+  event_id INTEGER NOT NULL REFERENCES story_events(id) ON DELETE CASCADE,
+  character_id INTEGER NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+  PRIMARY KEY (event_id, character_id)
+);
+CREATE INDEX IF NOT EXISTS story_event_characters_char_idx ON story_event_characters(character_id);
 CREATE TABLE IF NOT EXISTS translations_ru (
   hash TEXT PRIMARY KEY,
   src TEXT NOT NULL,

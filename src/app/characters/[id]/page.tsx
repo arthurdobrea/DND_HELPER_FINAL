@@ -13,6 +13,7 @@ import { localizeMany } from "@/lib/translate/view";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
 import { getCurrentWorld } from "@/lib/world";
+import { CharacterLocations } from "@/components/story/CharacterLocations";
 
 export async function generateMetadata({ params }: PageProps<"/characters/[id]">): Promise<Metadata> {
   const world = await getCurrentWorld();
@@ -75,6 +76,7 @@ export default async function CharacterPage({ params }: PageProps<"/characters/[
 
   return (
     <div>
+      <CharacterLocations characterId={row.id} />
       {/* Недостающие переводы описаний дописываются в фоне, страница обновится сама. */}
       {loc.enabled && loc.missing.length > 0 && (
         <div className="mx-auto mt-3 w-full max-w-3xl px-4">
