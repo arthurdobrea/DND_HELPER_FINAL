@@ -21,10 +21,14 @@ import {
   type Combatant,
 } from "@/lib/battle";
 import { xpForCr } from "@/lib/encounter";
+import type { RawMonster } from "@/lib/catalog/monsters";
+import { StatBlock } from "@/components/StatBlock";
 
 export type PartyEntry = { id: number; name: string; sub: string; ac: number; hp: number; hpMax: number; initBonus: number; monsterKey: string; cr: number; type: string };
 
 type Hit = { key: string; name: string; type: string; typeLabel: string; cr: number; crLabel: string; hp: number; ac: number; dex: number; source: string };
+
+const SIZES_KEY = "dnd-helper:battle-card-widths:v1";
 
 const d20 = () => 1 + Math.floor(Math.random() * 20);
 
@@ -41,7 +45,7 @@ function HpControl({ c, onHp }: { c: Combatant; onHp: (hp: number) => void }) {
     setAmount("");
   };
   return (
-    <div className="min-w-[13rem] flex-1">
+    <div className="w-full">
       <div className="flex items-baseline gap-1.5">
         <span className="font-display text-3xl leading-none" style={{ color }}>
           {Math.max(0, c.hp)}
@@ -81,9 +85,17 @@ function Row({
   onChange,
   onRemove,
   onDuplicate,
+  width,
+  onWidth,
+  selected,
+  onOpen,
 }: {
   c: Combatant;
   active: boolean;
+  width?: number;
+  onWidth: (w: number) => void;
+  selected: boolean;
+  onOpen: () => void;
   onChange: (patch: Partial<Combatant>) => void;
   onRemove: () => void;
   onDuplicate: () => void;
@@ -91,12 +103,32 @@ function Row({
   const down = isDown(c);
   const link = c.kind === "monster" ? `/monsters?open=${encodeURIComponent(c.refKey)}` : c.kind === "npc" ? `/npcs/${c.sheetId}` : `/characters/${c.sheetId}`;
   const icon = c.kind === "hero" ? "🧙" : c.kind === "npc" ? "🎭" : "👹";
+  const startW = useRef(0);
+
+  // Ширину меняют нативным ресайзом (уголок карточки); сохраняем только то, что изменил пользователь, а не адаптивную подгонку.
+  function onPointerDown(e: React.PointerEvent<HTMLLIElement>) {
+    const el = e.currentTarget;
+    startW.current = el.offsetWidth;
+    window.addEventListener(
+      "pointerup",
+      () => {
+        const w = el.offsetWidth;
+        if (Math.abs(w - startW.current) >= 3) onWidth(w);
+      },
+      { once: true },
+    );
+  }
   return (
     <li
-      className={`rounded-2xl border p-3 transition ${active ? "border-accent bg-accent/10 shadow-lg shadow-accent/10" : "border-border bg-panel"} ${down ? "opacity-70" : ""}`}
+      onPointerDown={onPointerDown}
+      style={width ? { width, maxWidth: "100%" } : undefined}
+      className={`min-w-[15rem] resize-x overflow-hidden rounded-2xl border p-3 transition ${
+        width ? "" : "w-full sm:w-[calc(50%-0.375rem)] lg:w-[calc(33.333%-0.5rem)] min-[1400px]:w-[calc(25%-0.5625rem)]"
+      } ${active ? "border-accent bg-accent/10 shadow-lg shadow-accent/10" : selected ? "border-accent/60 bg-panel" : "border-border bg-panel"} ${down ? "opacity-70" : ""}`}
     >
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex w-14 flex-col items-center">
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex w-14 shrink-0 flex-col items-center">
           <input
             value={c.init ?? ""}
             onChange={(e) => onChange({ init: e.target.value.trim() === "" || isNaN(Number(e.target.value)) ? null : Math.round(Number(e.target.value)) })}
@@ -106,22 +138,43 @@ function Row({
             aria-label={`Инициатива: ${c.name}`}
           />
           <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">иниц.</span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {active && <span className="text-accent">▶</span>}
+              <span>{icon}</span>
+              {c.kind === "monster" ? (
+                <button type="button" onClick={onOpen} title="Показать описание монстра" className={`text-left font-display text-lg leading-tight hover:text-accent ${down ? "line-through" : ""}`}>
+                  {c.name}
+                </button>
+              ) : (
+                <Link href={link} target="_blank" className={`font-display text-lg leading-tight hover:text-accent ${down ? "line-through" : ""}`}>
+                  {c.name}
+                </Link>
+              )}
+            </div>
+            {down && <span className="mt-0.5 inline-block rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-300">{c.kind === "monster" ? "☠ повержен" : "без сознания"}</span>}
+            <div className="mt-0.5 text-xs text-muted">
+              КД <b className="text-text">{c.ac}</b>
+              {c.kind !== "hero" && c.type && ` · ${label(MONSTER_TYPES, c.type)}`}
+              {c.kind === "monster" && ` · CR ${c.cr < 1 && c.cr > 0 ? `1/${Math.round(1 / c.cr)}` : c.cr}`}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-1 self-start">
+            <button type="button" className="text-muted hover:text-text" onClick={onDuplicate} title="Добавить ещё одного такого же">
+              ⧉
+            </button>
+            <button type="button" className="text-muted hover:text-red-400" onClick={onRemove} title="Убрать из боя">
+              ✕
+            </button>
+          </div>
         </div>
 
-        <div className="min-w-[10rem] flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            {active && <span className="text-accent">▶</span>}
-            <span>{icon}</span>
-            <Link href={link} target="_blank" className={`font-display text-xl hover:text-accent ${down ? "line-through" : ""}`}>
-              {c.name}
-            </Link>
-            {down && <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-300">{c.kind === "monster" ? "☠ повержен" : "без сознания"}</span>}
-          </div>
-          <div className="mt-0.5 text-xs text-muted">
-            КД <b className="text-text">{c.ac}</b>
-            {c.kind !== "hero" && c.type && ` · ${label(MONSTER_TYPES, c.type)}`}
-            {c.kind === "monster" && ` · CR ${c.cr < 1 && c.cr > 0 ? `1/${Math.round(1 / c.cr)}` : c.cr}`}
-          </div>
+        <HpControl c={c} onHp={(hp) => onChange({ hp })} />
+
+        <div>
 
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {c.conditions.map((x) => (
@@ -157,19 +210,59 @@ function Row({
             className="mt-2 w-full rounded border border-border bg-bg/40 px-2 py-1 text-xs"
           />
         </div>
-
-        <HpControl c={c} onHp={(hp) => onChange({ hp })} />
-
-        <div className="flex flex-col gap-1">
-          <button type="button" className="text-muted hover:text-text" onClick={onDuplicate} title="Добавить ещё одного такого же">
-            ⧉
-          </button>
-          <button type="button" className="text-muted hover:text-red-400" onClick={onRemove} title="Убрать из боя">
-            ✕
-          </button>
-        </div>
       </div>
     </li>
+  );
+}
+
+// ---------- Описание монстра ----------
+
+type Detail = { key: string; entry?: RawMonster; error?: boolean };
+
+function MonsterDetail({ monsterKey, onClose }: { monsterKey: string; onClose: () => void }) {
+  const [res, setRes] = useState<Detail | null>(null);
+
+  useEffect(() => {
+    const ctl = new AbortController();
+    fetch(`/api/monsters/detail?${new URLSearchParams({ key: monsterKey })}`, { signal: ctl.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<{ entry: RawMonster }>) : Promise.reject(new Error("fail"))))
+      .then((d) => setRes({ key: monsterKey, entry: d.entry }))
+      .catch((e) => {
+        if (!ctl.signal.aborted) setRes({ key: monsterKey, error: !!e });
+      });
+    return () => ctl.abort();
+  }, [monsterKey]);
+
+  const cur = res?.key === monsterKey ? res : null;
+  return (
+    <div className="card min-w-0 flex-1 basis-[28rem] p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <h2 className="font-display text-lg text-accent">📖 Описание монстра</h2>
+        <Link href={`/monsters?open=${encodeURIComponent(monsterKey)}`} target="_blank" className="ml-auto text-xs text-muted hover:text-text">
+          открыть в каталоге ↗
+        </Link>
+        <button type="button" className="text-muted hover:text-text" onClick={onClose} aria-label="Закрыть описание" title="Закрыть">
+          ✕
+        </button>
+      </div>
+      <div className="max-h-[70vh] overflow-y-auto pr-1">
+        {!cur ? (
+          <p className="p-4 text-center text-sm text-muted">Загружаю…</p>
+        ) : cur.error || !cur.entry ? (
+          <p className="p-4 text-center text-sm text-red-400">Не удалось загрузить описание.</p>
+        ) : (
+          <div className="space-y-3">
+            <StatBlock m={cur.entry} />
+            {cur.entry.desc && (
+              <details className="card p-3 text-sm">
+                <summary className="cursor-pointer text-muted">Описание / лор</summary>
+                <div className="mt-2 whitespace-pre-line">{cur.entry.desc.replace(/\\n/g, "\n")}</div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -302,6 +395,32 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const latest = useRef(initial);
   const dirty = useRef(false);
+  const [open, setOpen] = useState<{ id: string; key: string } | null>(null);
+  const [addOpen, setAddOpen] = useState<boolean | null>(null);
+  const [sizes, setSizes] = useState<Record<string, number>>({});
+
+  // Ширины карточек хранятся в браузере и переживают перезагрузку и редеплой.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(SIZES_KEY);
+      if (raw) {
+        const v = JSON.parse(raw) as Record<string, number>;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage доступен только на клиенте
+        if (v && typeof v === "object") setSizes(v);
+      }
+    } catch {}
+  }, []);
+
+  function setWidth(id: string, w: number) {
+    setSizes((s) => {
+      const alive = new Set(latest.current.combatants.map((c) => c.id));
+      const next = Object.fromEntries(Object.entries({ ...s, [id]: w }).filter(([k]) => alive.has(k)));
+      try {
+        localStorage.setItem(SIZES_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }
 
   function flush() {
     clearTimeout(timer.current);
@@ -353,6 +472,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
     });
   }
 
+  const showAdd = addOpen ?? battle.combatants.length === 0;
   const list = ordered(battle.combatants);
   const active = list.find((c) => c.id === battle.activeId);
   const fallen = battle.combatants.filter((c) => c.kind === "monster" && isDown(c));
@@ -377,7 +497,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-[1500px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="mx-auto grid w-full max-w-[2000px] gap-4 p-4 min-[1900px]:grid-cols-[minmax(0,1fr)_340px]">
       <section className="min-w-0 space-y-4">
         {/* ---------- Управление ---------- */}
         <div className="card sticky top-[var(--header-h,49px)] z-10 flex flex-wrap items-center gap-2 p-3">
@@ -420,10 +540,15 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
           </button>
         </div>
 
-        <details open={battle.combatants.length === 0} className="group">
-          <summary className="btn mb-2 cursor-pointer list-none">＋ Добавить в бой (монстры, герои, NPC)</summary>
-          <AddPanel heroes={heroes} npcs={npcs} onAdd={add} />
-        </details>
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="w-full max-w-[24rem] space-y-2">
+            <button type="button" className="btn" onClick={() => setAddOpen(!showAdd)}>
+              {showAdd ? "▾" : "▸"} Добавить в бой (монстры, герои, NPC)
+            </button>
+            {showAdd && <AddPanel heroes={heroes} npcs={npcs} onAdd={add} />}
+          </div>
+          {open && <MonsterDetail monsterKey={open.key} onClose={() => setOpen(null)} />}
+        </div>
 
         {/* ---------- Порядок ходов ---------- */}
         {list.length === 0 ? (
@@ -432,12 +557,16 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
             <p className="mt-2 text-sm">Добавьте монстров из бестиария и героев выше или начните бой из страницы «Столкновения».</p>
           </div>
         ) : (
-          <ul className="space-y-3">
+          <ul className="flex flex-wrap items-start gap-3">
             {list.map((c) => (
               <Row
                 key={c.id}
                 c={c}
                 active={battle.started && c.id === battle.activeId}
+                width={sizes[c.id]}
+                onWidth={(w) => setWidth(c.id, w)}
+                selected={open?.id === c.id}
+                onOpen={() => setOpen({ id: c.id, key: c.refKey })}
                 onChange={(p) => ("hp" in p && typeof p.hp === "number" ? setHp(c, p.hp) : patch(c.id, p))}
                 onRemove={() => confirm(`Убрать «${c.name}» из боя?`) && update((b) => ({ ...b, combatants: b.combatants.filter((x) => x.id !== c.id), activeId: b.activeId === c.id ? null : b.activeId }))}
                 onDuplicate={() => add([{ ...c, init: null, loot: null, hp: c.hpMax, conditions: [], note: "" }])}
@@ -448,7 +577,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
       </section>
 
       {/* ---------- Добыча и опыт ---------- */}
-      <aside className="space-y-3 xl:sticky xl:top-[calc(var(--header-h,49px)+1rem)] xl:max-h-[calc(100dvh-var(--header-h,49px)-2rem)] xl:self-start xl:overflow-y-auto">
+      <aside className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[1400px]:grid-cols-4 min-[1900px]:block min-[1900px]:space-y-3 min-[1900px]:sticky min-[1900px]:top-[calc(var(--header-h,49px)+1rem)] min-[1900px]:max-h-[calc(100dvh-var(--header-h,49px)-2rem)] min-[1900px]:self-start min-[1900px]:overflow-y-auto">
         <div className="card p-3">
           <h2 className="font-display text-lg text-accent">💰 Добыча и опыт</h2>
           <p className="mt-1 text-xs text-muted">Когда хиты монстра падают до 0, с него выпадает добыча: монеты, вещь из каталога и трофеи.</p>
