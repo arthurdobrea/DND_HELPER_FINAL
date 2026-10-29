@@ -41,7 +41,7 @@ function HpControl({ c, onHp }: { c: Combatant; onHp: (hp: number) => void }) {
     setAmount("");
   };
   return (
-    <div className="min-w-[13rem] flex-1">
+    <div className="w-full">
       <div className="flex items-baseline gap-1.5">
         <span className="font-display text-3xl leading-none" style={{ color }}>
           {Math.max(0, c.hp)}
@@ -95,8 +95,9 @@ function Row({
     <li
       className={`rounded-2xl border p-3 transition ${active ? "border-accent bg-accent/10 shadow-lg shadow-accent/10" : "border-border bg-panel"} ${down ? "opacity-70" : ""}`}
     >
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="flex w-14 flex-col items-center">
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex w-14 shrink-0 flex-col items-center">
           <input
             value={c.init ?? ""}
             onChange={(e) => onChange({ init: e.target.value.trim() === "" || isNaN(Number(e.target.value)) ? null : Math.round(Number(e.target.value)) })}
@@ -106,22 +107,37 @@ function Row({
             aria-label={`Инициатива: ${c.name}`}
           />
           <span className="mt-0.5 text-[10px] uppercase tracking-wide text-muted">иниц.</span>
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {active && <span className="text-accent">▶</span>}
+              <span>{icon}</span>
+              <Link href={link} target="_blank" className={`font-display text-lg leading-tight hover:text-accent ${down ? "line-through" : ""}`}>
+                {c.name}
+              </Link>
+            </div>
+            {down && <span className="mt-0.5 inline-block rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-300">{c.kind === "monster" ? "☠ повержен" : "без сознания"}</span>}
+            <div className="mt-0.5 text-xs text-muted">
+              КД <b className="text-text">{c.ac}</b>
+              {c.kind !== "hero" && c.type && ` · ${label(MONSTER_TYPES, c.type)}`}
+              {c.kind === "monster" && ` · CR ${c.cr < 1 && c.cr > 0 ? `1/${Math.round(1 / c.cr)}` : c.cr}`}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col gap-1 self-start">
+            <button type="button" className="text-muted hover:text-text" onClick={onDuplicate} title="Добавить ещё одного такого же">
+              ⧉
+            </button>
+            <button type="button" className="text-muted hover:text-red-400" onClick={onRemove} title="Убрать из боя">
+              ✕
+            </button>
+          </div>
         </div>
 
-        <div className="min-w-[10rem] flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            {active && <span className="text-accent">▶</span>}
-            <span>{icon}</span>
-            <Link href={link} target="_blank" className={`font-display text-xl hover:text-accent ${down ? "line-through" : ""}`}>
-              {c.name}
-            </Link>
-            {down && <span className="rounded bg-red-500/20 px-1.5 py-0.5 text-xs text-red-300">{c.kind === "monster" ? "☠ повержен" : "без сознания"}</span>}
-          </div>
-          <div className="mt-0.5 text-xs text-muted">
-            КД <b className="text-text">{c.ac}</b>
-            {c.kind !== "hero" && c.type && ` · ${label(MONSTER_TYPES, c.type)}`}
-            {c.kind === "monster" && ` · CR ${c.cr < 1 && c.cr > 0 ? `1/${Math.round(1 / c.cr)}` : c.cr}`}
-          </div>
+        <HpControl c={c} onHp={(hp) => onChange({ hp })} />
+
+        <div>
 
           <div className="mt-2 flex flex-wrap items-center gap-1">
             {c.conditions.map((x) => (
@@ -156,17 +172,6 @@ function Row({
             maxLength={300}
             className="mt-2 w-full rounded border border-border bg-bg/40 px-2 py-1 text-xs"
           />
-        </div>
-
-        <HpControl c={c} onHp={(hp) => onChange({ hp })} />
-
-        <div className="flex flex-col gap-1">
-          <button type="button" className="text-muted hover:text-text" onClick={onDuplicate} title="Добавить ещё одного такого же">
-            ⧉
-          </button>
-          <button type="button" className="text-muted hover:text-red-400" onClick={onRemove} title="Убрать из боя">
-            ✕
-          </button>
         </div>
       </div>
     </li>
@@ -377,7 +382,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-[1500px] gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="mx-auto grid w-full max-w-[2000px] gap-4 p-4 min-[1900px]:grid-cols-[minmax(0,1fr)_340px]">
       <section className="min-w-0 space-y-4">
         {/* ---------- Управление ---------- */}
         <div className="card sticky top-[var(--header-h,49px)] z-10 flex flex-wrap items-center gap-2 p-3">
@@ -432,7 +437,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
             <p className="mt-2 text-sm">Добавьте монстров из бестиария и героев выше или начните бой из страницы «Столкновения».</p>
           </div>
         ) : (
-          <ul className="space-y-3">
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[1400px]:grid-cols-4">
             {list.map((c) => (
               <Row
                 key={c.id}
@@ -448,7 +453,7 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
       </section>
 
       {/* ---------- Добыча и опыт ---------- */}
-      <aside className="space-y-3 xl:sticky xl:top-[calc(var(--header-h,49px)+1rem)] xl:max-h-[calc(100dvh-var(--header-h,49px)-2rem)] xl:self-start xl:overflow-y-auto">
+      <aside className="grid content-start gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[1400px]:grid-cols-4 min-[1900px]:block min-[1900px]:space-y-3 min-[1900px]:sticky min-[1900px]:top-[calc(var(--header-h,49px)+1rem)] min-[1900px]:max-h-[calc(100dvh-var(--header-h,49px)-2rem)] min-[1900px]:self-start min-[1900px]:overflow-y-auto">
         <div className="card p-3">
           <h2 className="font-display text-lg text-accent">💰 Добыча и опыт</h2>
           <p className="mt-1 text-xs text-muted">Когда хиты монстра падают до 0, с него выпадает добыча: монеты, вещь из каталога и трофеи.</p>
