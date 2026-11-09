@@ -13,6 +13,7 @@ import {
   nextTurn,
   noCoins,
   numberedName,
+  sideOf,
   ordered,
   rollInitiative,
   startBattle,
@@ -29,6 +30,9 @@ export type PartyEntry = { id: number; name: string; sub: string; ac: number; hp
 type Hit = { key: string; name: string; type: string; typeLabel: string; cr: number; crLabel: string; hp: number; ac: number; dex: number; source: string };
 
 const SIZES_KEY = "dnd-helper:battle-card-widths:v1";
+
+const CR_STEPS = [0, 0.125, 0.25, 0.5, ...Array.from({ length: 30 }, (_, i) => i + 1)];
+const crText = (v: number) => (v === 0.125 ? "1/8" : v === 0.25 ? "1/4" : v === 0.5 ? "1/2" : String(v));
 
 const d20 = () => 1 + Math.floor(Math.random() * 20);
 
@@ -104,6 +108,7 @@ function Row({
   const link = c.kind === "monster" ? `/monsters?open=${encodeURIComponent(c.refKey)}` : c.kind === "npc" ? `/npcs/${c.sheetId}` : `/characters/${c.sheetId}`;
   const icon = c.kind === "hero" ? "🧙" : c.kind === "npc" ? "🎭" : "👹";
   const startW = useRef(0);
+  const ally = sideOf(c) === "ally";
 
   // Ширину меняют нативным ресайзом (уголок карточки); сохраняем только то, что изменил пользователь, а не адаптивную подгонку.
   function onPointerDown(e: React.PointerEvent<HTMLLIElement>) {
@@ -123,8 +128,10 @@ function Row({
       onPointerDown={onPointerDown}
       style={width ? { width, maxWidth: "100%" } : undefined}
       className={`min-w-[15rem] resize-x overflow-hidden rounded-2xl border p-3 transition ${
+        ally ? "border-sky-500/40 bg-sky-500/15" : "border-red-500/40 bg-red-500/15"
+      } ${
         width ? "" : "w-full sm:w-[calc(50%-0.375rem)] lg:w-[calc(33.333%-0.5rem)] min-[1400px]:w-[calc(25%-0.5625rem)]"
-      } ${active ? "border-accent bg-accent/10 shadow-lg shadow-accent/10" : selected ? "border-accent/60 bg-panel" : "border-border bg-panel"} ${down ? "opacity-70" : ""}`}
+      } ${active ? "ring-2 ring-accent shadow-lg shadow-accent/20" : selected ? "ring-1 ring-accent/60" : ""} ${down ? "opacity-70" : ""}`}
     >
       <div className="flex flex-col gap-2.5">
         <div className="flex items-center gap-2">
@@ -163,6 +170,14 @@ function Row({
           </div>
 
           <div className="flex shrink-0 flex-col gap-1 self-start">
+            <button
+              type="button"
+              className="text-muted hover:text-text"
+              onClick={() => onChange({ side: ally ? "enemy" : "ally" })}
+              title={ally ? "Сделать врагом (переместить вниз)" : "Сделать союзником (переместить вверх)"}
+            >
+              ⇅
+            </button>
             <button type="button" className="text-muted hover:text-text" onClick={onDuplicate} title="Добавить ещё одного такого же">
               ⧉
             </button>
@@ -281,12 +296,16 @@ function AddPanel({
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [count, setCount] = useState(1);
+  const [asAlly, setAsAlly] = useState(false);
+  const [type, setType] = useState("");
+  const [crMin, setCrMin] = useState("");
+  const [crMax, setCrMax] = useState("");
 
   useEffect(() => {
     if (tab !== "bestiary") return;
     const ctl = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/monsters/search?${new URLSearchParams({ q })}`, { signal: ctl.signal })
+      fetch(`/api/monsters/search?${new URLSearchParams({ q, type, crMin, crMax })}`, { signal: ctl.signal })
         .then((r) => r.json() as Promise<{ items: Hit[] }>)
         .then((d) => setHits(d.items))
         .catch(() => {});
@@ -295,11 +314,11 @@ function AddPanel({
       clearTimeout(t);
       ctl.abort();
     };
-  }, [q, tab]);
+  }, [q, type, crMin, crMax, tab]);
 
   const base = { conditions: [] as string[], note: "", loot: null };
   const monsterFrom = (h: Hit): Omit<Combatant, "id"> => ({
-    ...base, kind: "monster", name: h.name, refKey: h.key, sheetId: 0, init: null, dex: Math.floor((h.dex - 10) / 2), ac: h.ac, hp: h.hp, hpMax: h.hp, cr: h.cr, type: h.type,
+    ...base, kind: "monster", name: h.name, refKey: h.key, sheetId: 0, init: null, dex: Math.floor((h.dex - 10) / 2), ac: h.ac, hp: h.hp, hpMax: h.hp, cr: h.cr, type: h.type, ...(asAlly ? { side: "ally" as const } : {}),
   });
   const partyFrom = (p: PartyEntry, kind: "hero" | "npc"): Omit<Combatant, "id"> => ({
     ...base, kind, name: p.name, refKey: p.monsterKey, sheetId: p.id, init: null, dex: p.initBonus, ac: p.ac, hp: p.hp, hpMax: Math.max(1, p.hpMax), cr: p.cr, type: p.type,
@@ -327,6 +346,53 @@ function AddPanel({
               Сколько:
               <input value={count} onChange={(e) => setCount(Math.min(20, Math.max(1, Math.floor(Number(e.target.value) || 1))))} inputMode="numeric" className="input w-14 py-1 text-center" />
             </label>
+            <label className="flex items-center gap-1.5 text-sm text-muted" title="Добавлять монстров как союзников игроков">
+              <input type="checkbox" checked={asAlly} onChange={(e) => setAsAlly(e.target.checked)} />
+              союзник
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select value={type} onChange={(e) => setType(e.target.value)} className="input min-w-0 flex-1 py-1 text-sm" aria-label="Тип монстра">
+              <option value="">Любой тип</option>
+              {Object.entries(MONSTER_TYPES).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 text-muted">
+              CR
+              <select value={crMin} onChange={(e) => setCrMin(e.target.value)} className="input w-[4.5rem] py-1 text-sm" aria-label="CR от">
+                <option value="">от</option>
+                {CR_STEPS.map((v) => (
+                  <option key={v} value={v}>
+                    {crText(v)}
+                  </option>
+                ))}
+              </select>
+              –
+              <select value={crMax} onChange={(e) => setCrMax(e.target.value)} className="input w-[4.5rem] py-1 text-sm" aria-label="CR до">
+                <option value="">до</option>
+                {CR_STEPS.map((v) => (
+                  <option key={v} value={v}>
+                    {crText(v)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(type || crMin || crMax) && (
+              <button
+                type="button"
+                className="text-xs text-muted hover:text-text"
+                onClick={() => {
+                  setType("");
+                  setCrMin("");
+                  setCrMax("");
+                }}
+              >
+                сбросить
+              </button>
+            )}
           </div>
           <ul className="max-h-64 divide-y divide-border overflow-y-auto rounded-lg border border-border">
             {hits.map((h) => (
@@ -474,6 +540,8 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
 
   const showAdd = addOpen ?? battle.combatants.length === 0;
   const list = ordered(battle.combatants);
+  const allies = list.filter((c) => sideOf(c) === "ally");
+  const enemies = list.filter((c) => sideOf(c) === "enemy");
   const active = list.find((c) => c.id === battle.activeId);
   const fallen = battle.combatants.filter((c) => c.kind === "monster" && isDown(c));
   const heroCount = battle.combatants.filter((c) => c.kind === "hero").length;
@@ -557,22 +625,43 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
             <p className="mt-2 text-sm">Добавьте монстров из бестиария и героев выше или начните бой из страницы «Столкновения».</p>
           </div>
         ) : (
-          <ul className="flex flex-wrap items-start gap-3">
-            {list.map((c) => (
-              <Row
-                key={c.id}
-                c={c}
-                active={battle.started && c.id === battle.activeId}
-                width={sizes[c.id]}
-                onWidth={(w) => setWidth(c.id, w)}
-                selected={open?.id === c.id}
-                onOpen={() => setOpen({ id: c.id, key: c.refKey })}
-                onChange={(p) => ("hp" in p && typeof p.hp === "number" ? setHp(c, p.hp) : patch(c.id, p))}
-                onRemove={() => confirm(`Убрать «${c.name}» из боя?`) && update((b) => ({ ...b, combatants: b.combatants.filter((x) => x.id !== c.id), activeId: b.activeId === c.id ? null : b.activeId }))}
-                onDuplicate={() => add([{ ...c, init: null, loot: null, hp: c.hpMax, conditions: [], note: "" }])}
-              />
+          <div className="space-y-5">
+            {(
+              [
+                ["ally", "🔵 Союзники", allies, "Здесь герои, NPC и союзные монстры. Кнопка ⇅ на карточке переносит существо к врагам."],
+                ["enemy", "🔴 Враги", enemies, "Врагов нет. Кнопка ⇅ на карточке переносит существо сюда."],
+              ] as const
+            ).map(([side, title, items, empty]) => (
+              <div
+                key={side}
+                className={`rounded-2xl border p-3 ${side === "ally" ? "border-sky-500/30 bg-sky-500/5" : "border-red-500/30 bg-red-500/5"}`}
+              >
+                <h2 className={`mb-2 font-display text-lg ${side === "ally" ? "text-sky-300" : "text-red-300"}`}>
+                  {title} <span className="text-sm text-muted">({items.length})</span>
+                </h2>
+                {items.length === 0 ? (
+                  <p className="px-1 py-3 text-sm text-muted">{empty}</p>
+                ) : (
+                  <ul className="flex flex-wrap items-start gap-3">
+                    {items.map((c) => (
+                      <Row
+                        key={c.id}
+                        c={c}
+                        active={battle.started && c.id === battle.activeId}
+                        width={sizes[c.id]}
+                        onWidth={(w) => setWidth(c.id, w)}
+                        selected={open?.id === c.id}
+                        onOpen={() => setOpen({ id: c.id, key: c.refKey })}
+                        onChange={(p) => ("hp" in p && typeof p.hp === "number" ? setHp(c, p.hp) : patch(c.id, p))}
+                        onRemove={() => confirm(`Убрать «${c.name}» из боя?`) && update((b) => ({ ...b, combatants: b.combatants.filter((x) => x.id !== c.id), activeId: b.activeId === c.id ? null : b.activeId }))}
+                        onDuplicate={() => add([{ ...c, init: null, loot: null, hp: c.hpMax, conditions: [], note: "" }])}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 

@@ -23,7 +23,11 @@ export type Combatant = {
   cr: number;
   type: string;
   loot: Loot | null;
+  /** Сторона в бою; если не задана — герои и NPC за игроков, монстры против них. */
+  side?: "ally" | "enemy";
 };
+
+export const sideOf = (c: Pick<Combatant, "kind" | "side">): "ally" | "enemy" => c.side ?? (c.kind === "monster" ? "enemy" : "ally");
 
 export type Battle = {
   started: boolean;
@@ -135,6 +139,7 @@ export function sanitizeBattle(raw: unknown): Battle {
       note: str(c.note, 300),
       cr: num(c.cr),
       type: str(c.type, 30),
+      side: c.side === "ally" || c.side === "enemy" ? c.side : undefined,
       loot: c.loot
         ? {
             coins: coins(c.loot.coins),
