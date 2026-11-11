@@ -168,6 +168,36 @@ CREATE TABLE IF NOT EXISTS story_locations (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS story_locations_world_idx ON story_locations(world_id);
+CREATE TABLE IF NOT EXISTS custom_monsters (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL,
+  draft TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS custom_monsters_world_idx ON custom_monsters(world_id);
+CREATE TABLE IF NOT EXISTS fishing_stash (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  tier TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS fishing_stash_world_idx ON fishing_stash(world_id);
+CREATE TABLE IF NOT EXISTS ai_creations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  world_id INTEGER NOT NULL REFERENCES worlds(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  prompt TEXT NOT NULL DEFAULT '',
+  data TEXT NOT NULL,
+  starred INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ai_creations_world_idx ON ai_creations(world_id);
 CREATE TABLE IF NOT EXISTS story_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   location_id INTEGER NOT NULL REFERENCES story_locations(id) ON DELETE CASCADE,

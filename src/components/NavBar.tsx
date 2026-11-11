@@ -15,6 +15,8 @@ const LINKS = [
   { href: "/spells", label: "✨ Заклинания" },
   { href: "/items", label: "🗡️ Предметы" },
   { href: "/shop", label: "🏺 Магазин" },
+  { href: "/fishing", label: "🎣 Рыбалка" },
+  { href: "/ai-forge", label: "🔮 ИИ-кузница" },
   { href: "/maps", label: "🗺️ Карты" },
   { href: "/books", label: "📚 Книги" },
   { href: "/parser", label: "🔍 Парсер" },
@@ -53,7 +55,7 @@ export function NavBar({ worldName }: { worldName?: string }) {
 
   return (
     <header ref={headerRef} className="sticky top-0 z-20 border-b border-border bg-bg/95 backdrop-blur">
-      <nav className="flex items-center gap-1 overflow-x-auto px-4 py-2">
+      <nav className="flex flex-wrap items-center gap-x-1 gap-y-1 px-4 py-2">
         <Link href="/worlds" className="mr-2 font-display text-lg text-accent" title="Выбор мира">
           🐉
         </Link>

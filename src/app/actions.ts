@@ -25,6 +25,7 @@ import { parseSpellcasting, type SpellLookup } from "@/lib/npc-spells";
 import { normalizeSpellName } from "@/lib/spell-names";
 import { localize } from "@/lib/translate/view";
 import { getItems, getMonsterRaw, getMonsters, getSpells } from "@/lib/catalog";
+import { isCustomKey } from "@/lib/custom-monsters";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
 import { WORLD_COOKIE, findEntry, requireWorld } from "@/lib/world";
 import { applyDamage, applyHeal, emptySheet, initiative, normalizeSheet, type CharacterSheet } from "@/lib/character";
@@ -516,7 +517,7 @@ export async function importNpcSpells(id: number): Promise<{ found: number }> {
   const world = await requireWorld();
   const db = getDb();
   const row = db.select().from(schema.characters).where(and(characterWhere(id, world.id), eq(schema.characters.kind, "npc"))).get();
-  if (!row?.monsterKey) return { found: 0 };
+  if (!row?.monsterKey || isCustomKey(row.monsterKey)) return { found: 0 };
   const raw = (await getMonsterRaw(row.monsterKey).catch(() => undefined)) ?? (await getMonster(row.monsterKey).catch(() => null));
   if (!raw) return { found: 0 };
   const sc = parseSpellcasting(raw as Monster, await spellLookup());

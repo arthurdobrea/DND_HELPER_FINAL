@@ -5,7 +5,8 @@ import { connection } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { getCurrentWorld, requireWorld } from "@/lib/world";
-import { getMonsterRaw, type RawMonster } from "@/lib/catalog";
+import type { RawMonster } from "@/lib/catalog";
+import { isCustomKey, resolveMonster } from "@/lib/custom-monsters";
 import { normalizeSheet } from "@/lib/character";
 import { localize } from "@/lib/translate/view";
 import { pageMeta } from "@/lib/meta";
@@ -41,7 +42,7 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
   if (!row) notFound();
 
   // Исходный статблок существа — для сверки (если оно ещё есть в каталоге).
-  const raw = row.monsterKey ? await getMonsterRaw(row.monsterKey).catch(() => undefined) : undefined;
+  const raw = row.monsterKey ? ((await resolveMonster(row.monsterKey, world.id)) as RawMonster | undefined) : undefined;
   const statblock = raw ? localize("monster", raw as RawMonster, "ru").entry : null;
 
   // Карточки по бокам от листа: слева действия и оружие, справа особенности (и заклинания в тексте умения).
@@ -54,7 +55,21 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
   return (
     <div>
       <CharacterLocations characterId={row.id} />
-      {row.monsterKey && (
+      <div className="mx-auto mt-3 w-full max-w-3xl px-4">
+        <Link href={`/npcs/forge?edit=${row.id}`} className="btn px-2.5 py-1 text-xs" title="Изменить характеристики, способности и заклинания в конструкторе">
+          ✏️ Править в конструкторе
+        </Link>
+        <Link href={`/npcs/builder?edit=${row.id}`} className="btn ml-2 px-2.5 py-1 text-xs" title="Править блоками: перетаскивание, замена способностей">
+          🧩 Править в сборщике
+        </Link>
+        {row.monsterKey && (
+          <a href={`/api/npcs/${row.id}/pdf`} download className="btn ml-2 px-2.5 py-1 text-xs" title="Скачать лист NPC в PDF">
+            📄 PDF-лист
+          </a>
+        )}
+        {!isCustomKey(row.monsterKey) && <span className="ml-2 text-[11px] text-muted">статблок станет вашим монстром; характеристики, атаки и особенности листа пересоберутся</span>}
+      </div>
+      {row.monsterKey && !isCustomKey(row.monsterKey) && (
         <div className="mx-auto mt-3 w-full max-w-3xl px-4">
           <ImportSpellsButton id={row.id} />
         </div>
@@ -62,13 +77,15 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
       {raw && statblock && (
         <details className="mx-auto mt-3 w-full max-w-3xl px-4">
           <summary className="cursor-pointer text-sm text-muted hover:text-accent">
-            Основа из бестиария: {raw.name} (CR {raw.challenge_rating}) — показать исходный статблок
+            {isCustomKey(row.monsterKey) ? "Статблок из конструктора" : "Основа из бестиария"}: {raw.name} (CR {raw.challenge_rating}) — показать исходный статблок
           </summary>
           <div className="mt-2 flex flex-col gap-2">
             <StatBlock m={statblock} lang="ru" />
-            <Link href={`/monsters?open=${encodeURIComponent(row.monsterKey!)}`} className="text-xs text-accent hover:underline">
-              Открыть во вкладке «Монстры» →
-            </Link>
+            {!isCustomKey(row.monsterKey) && (
+              <Link href={`/monsters?open=${encodeURIComponent(row.monsterKey!)}`} className="text-xs text-accent hover:underline">
+                Открыть во вкладке «Монстры» →
+              </Link>
+            )}
           </div>
         </details>
       )}

@@ -27,7 +27,7 @@ const RULE = rgb(0.82, 0.78, 0.72);
 // Шрифты лежат в public/fonts (попадают в Docker-образ вместе с public/). DejaVu — с кириллицей.
 const fontDir = () => path.join(/*turbopackIgnore: true*/ process.cwd(), "public", "fonts");
 let fontCache: Promise<[Uint8Array, Uint8Array, Uint8Array]> | undefined;
-const loadFonts = () =>
+export const loadFonts = () =>
   (fontCache ??= Promise.all(
     ["DejaVuSansCondensed.ttf", "DejaVuSansCondensed-Bold.ttf", "DejaVuSansCondensed-Oblique.ttf"].map(
       async (f) => new Uint8Array(await fs.readFile(path.join(/*turbopackIgnore: true*/ fontDir(), f))),
@@ -75,7 +75,7 @@ export function cleanText(s: string): string {
 }
 
 /** Перенос по словам; слишком длинное слово режется по символам. */
-function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+export function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const out: string[] = [];
   const width = (t: string) => font.widthOfTextAtSize(t, size);
   for (const para of text.split("\n")) {

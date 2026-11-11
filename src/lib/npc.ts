@@ -31,7 +31,7 @@ const SKILL_ALIASES: Record<string, SkillKey> = {
   "animal handling": "animal",
   "sleight of hand": "sleight",
 };
-const skillKey = (name: string): SkillKey | null => {
+export const skillKey = (name: string): SkillKey | null => {
   const n = name.trim().toLowerCase();
   return SKILL_ALIASES[n] ?? (SKILLS.find((s) => s.key === n)?.key ?? null);
 };

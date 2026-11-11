@@ -345,3 +345,48 @@ export type Character = typeof characters.$inferSelect;
 export type WorldCategory = typeof worldCategories.$inferSelect;
 export type StoryNote = typeof storyNotes.$inferSelect;
 export type ShopItem = typeof shopItems.$inferSelect;
+
+/**
+ * Монстры, собранные в конструкторе NPC (/npcs/forge). data — статблок в формате каталога (Monster),
+ * draft — исходный черновик конструктора (для повторного редактирования). Ключ в характеристиках: «custom:<id>».
+ */
+export const customMonsters = sqliteTable("custom_monsters", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  data: text("data").notNull(),
+  draft: text("draft").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/** Рыбалка: заготовки мастера — понравившийся улов, отложенный на будущее. data — улов (FishCatch) целиком. */
+export const fishingStash = sqliteTable("fishing_stash", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  tier: text("tier").notNull(),
+  name: text("name").notNull(),
+  data: text("data").notNull(),
+  note: text("note").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});
+
+/**
+ * ИИ-кузница: всё, что сгенерировал Gemini (монстры, заклинания, предметы). starred — «мои», не удаляются при чистке истории.
+ * data — JSON сущности ({ kind, draft | spell | item }).
+ */
+export const aiCreations = sqliteTable("ai_creations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  worldId: integer("world_id")
+    .notNull()
+    .references(() => worlds.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<"monster" | "spell" | "item">().notNull(),
+  name: text("name").notNull(),
+  prompt: text("prompt").notNull().default(""),
+  data: text("data").notNull(),
+  starred: integer("starred", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+});

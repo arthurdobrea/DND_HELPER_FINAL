@@ -1,7 +1,7 @@
-import { getMonsterRaw } from "@/lib/catalog";
 import type { RawMonster } from "@/lib/catalog/monsters";
-import { getMonster } from "@/lib/open5e";
+import { resolveMonster } from "@/lib/custom-monsters";
 import { localize } from "@/lib/translate/view";
+import { getCurrentWorld } from "@/lib/world";
 
 /** Статблок монстра для панели боя: GET /api/monsters/detail?key=…&lang=ru|en (переводы — из кэша). */
 export async function GET(request: Request) {
@@ -10,7 +10,8 @@ export async function GET(request: Request) {
   const lang = sp.get("lang") === "en" ? "en" : "ru";
   if (!key) return Response.json({ error: "no key" }, { status: 400 });
 
-  const raw = (await getMonsterRaw(key).catch(() => undefined)) ?? ((await getMonster(key).catch(() => null)) as RawMonster | null);
+  const world = await getCurrentWorld();
+  const raw = (await resolveMonster(key, world?.id)) as RawMonster | undefined;
   if (!raw) return Response.json({ error: "not found" }, { status: 404 });
 
   const loc = localize("monster", raw, lang);

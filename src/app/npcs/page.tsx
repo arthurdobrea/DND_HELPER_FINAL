@@ -26,8 +26,14 @@ export default async function NpcsPage() {
     <div className="mx-auto w-full max-w-6xl p-4">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="mr-auto font-display text-2xl text-accent">🎭 NPC мира «{world.name}»</h1>
-        <Link href="/npcs/new" className="btn btn-primary">
-          ＋ Создать NPC
+        <Link href="/npcs/builder" className="btn btn-primary" title="Собрать существо из блоков: перетаскивайте способности и заклинания, заменяйте одним кликом">
+          🧩 Сборщик
+        </Link>
+        <Link href="/npcs/forge" className="btn" title="Собрать своего монстра: основа, способности других монстров, свои атаки и заклинания">
+          🛠️ Конструктор
+        </Link>
+        <Link href="/npcs/new" className="btn" title="Быстро: один монстр бестиария + имя и предыстория">
+          ＋ NPC из бестиария
         </Link>
       </div>
 

@@ -24,7 +24,7 @@ export function geminiEnabled(): boolean {
   return (process.env.GEMINI_API_KEY ?? "").trim() !== "";
 }
 
-type Request = { system: string; prompt: string; maxTokens?: number; temperature?: number; /** Ответ строго в JSON (responseMimeType). */ json?: boolean };
+type Request = { system: string; prompt: string; /** Модель вместо GEMINI_MODEL (например, «качественная» в ИИ-кузнице). */ model?: string; maxTokens?: number; temperature?: number; /** Ответ строго в JSON (responseMimeType). */ json?: boolean };
 export type Source = { title: string; uri: string };
 export type Generated = { text: string; sources: Source[]; searched: boolean };
 
@@ -39,10 +39,10 @@ type ApiResponse = {
 
 const BLOCKED_FINISH = new Set(["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "IMAGE_SAFETY", "RECITATION"]);
 
-async function call({ system, prompt, maxTokens = 1200, temperature = 0.9, json = false }: Request, search: boolean): Promise<Response> {
+async function call({ system, prompt, model: modelOverride, maxTokens = 1200, temperature = 0.9, json = false }: Request, search: boolean): Promise<Response> {
   const key = (process.env.GEMINI_API_KEY ?? "").trim();
   if (!key) throw new AiError("Не задан GEMINI_API_KEY: добавьте ключ в файл .env и перезапустите приложение.");
-  const model = (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_MODEL;
+  const model = modelOverride?.trim() || (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_MODEL;
   try {
     return await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
@@ -63,11 +63,11 @@ async function call({ system, prompt, maxTokens = 1200, temperature = 0.9, json 
   }
 }
 
-function failure(res: Response): AiError {
-  const model = (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_MODEL;
+function failure(res: Response, modelOverride?: string): AiError {
+  const model = modelOverride?.trim() || (process.env.GEMINI_MODEL ?? "").trim() || DEFAULT_MODEL;
   if (res.status === 400 || res.status === 403) return new AiError("Gemini отклонил запрос: проверьте, что GEMINI_API_KEY верный и активен в AI Studio.");
   if (res.status === 402) return new AiError("У проекта Gemini закончились предоплаченные кредиты. Пополните баланс на ai.studio/projects или создайте ключ в проекте на бесплатном уровне и вставьте его в .env.");
-  if (res.status === 404) return new AiError(`Модель «${model}» не найдена: поправьте GEMINI_MODEL в .env.`);
+  if (res.status === 404) return new AiError(`Модель «${model}» не найдена: поправьте ${modelOverride ? "GEMINI_MODEL_QUALITY" : "GEMINI_MODEL"} в .env.`);
   if (res.status === 429) return new AiError("Достигнут лимит запросов Gemini (бесплатный уровень). Подождите минуту и повторите.");
   return new AiError(`Gemini временно недоступен (код ${res.status}). Повторите позже.`);
 }
@@ -99,7 +99,7 @@ export async function generateText(req: Request): Promise<string> {
 /** Ответ модели в формате JSON (для извлечения данных). Возвращает «сырой» текст ответа — разбирает вызывающий код. */
 export async function generateJson(req: Omit<Request, "json">): Promise<string> {
   const res = await call({ ...req, json: true }, false);
-  if (!res.ok) throw failure(res);
+  if (!res.ok) throw failure(res, req.model);
   return read((await res.json().catch(() => null)) as ApiResponse | null, false).text;
 }
 

@@ -1,3 +1,4 @@
+import { customMonsterInfo } from "@/lib/custom-monsters";
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { asc, eq } from "drizzle-orm";
@@ -30,10 +31,11 @@ export default async function BattlePage() {
     .where(eq(schema.characters.worldId, world.id))
     .orderBy(asc(schema.characters.name))
     .all();
+  const custom = customMonsterInfo(world.id);
   const monsters = new Map((await getMonsters().catch(() => [])).map((m) => [m.key, m]));
   const toEntry = (r: (typeof chars)[number]): PartyEntry => {
     const s = normalizeSheet(JSON.parse(r.data));
-    const base = r.monsterKey ? monsters.get(r.monsterKey) : undefined;
+    const base = r.monsterKey ? (monsters.get(r.monsterKey) ?? custom.get(r.monsterKey)) : undefined;
     return {
       id: r.id,
       name: s.name || "Без имени",
