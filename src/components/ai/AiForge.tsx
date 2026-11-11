@@ -200,12 +200,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
     const it = c.entity.item;
     const tier = fishingTierOf(it);
     try {
-      await stashCatch({
-        tier,
-        value: null,
-        junk: null,
-        item: { key: it.key, name: it.name, nameEn: it.name, rarity: it.rarity, category: it.category, price: it.price, priceEstimated: it.priceEstimated, attunement: it.attunement, desc: it.desc },
-      });
+      await stashCatch({ tier, kind: "item", value: null, item: it, aiId: c.id });
       say(`Добавлено в заготовки рыбалки: ${TIER_BY_ID[tier].title}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось добавить в заготовки");

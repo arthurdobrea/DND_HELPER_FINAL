@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { and, desc, eq, notInArray } from "drizzle-orm";
-import { AiError, generateJson, geminiEnabled } from "@/lib/ai/gemini";
+import { AiError, generateJson, generateText, geminiEnabled } from "@/lib/ai/gemini";
+import type { TierId } from "@/lib/fishing";
 import {
   entityName,
   sanitizeItem,
@@ -222,3 +223,67 @@ export async function aiItemToShop(id: number): Promise<{ ok: boolean; error?: s
   revalidatePath("/shop");
   return { ok: true };
 }
+
+// ---------- Для рыбалки ----------
+
+const FISH_ITEM_RULE: Partial<Record<TierId, string>> = {
+  trinket: "немагическая мелочь ценой до 5 зм (rarity: null, magic: false)",
+  gear: "немагическое снаряжение или оружие ценой до 50 зм (rarity: null, magic: false)",
+  good: "дорогое немагическое снаряжение (50–500 зм) или обычный магический предмет (rarity: common)",
+  uncommon: "магический предмет, rarity: uncommon",
+  rare: "магический предмет, rarity: rare",
+  "very-rare": "магический предмет, rarity: very-rare",
+  legendary: "магический предмет, rarity: legendary",
+};
+
+const WATER = "Это находка, которую герои выловили удочкой из воды. Описание начни с того, как вещь выглядит после воды, и одной фразой намекни, кому она принадлежала. Вещь должна быть полезной в игре.";
+
+/** Предмет или свиток для рыбалки через Gemini: попадает в историю ИИ-кузницы (там его можно править). */
+export async function aiCatch(input: { kind: "item" | "spell"; tier: TierId; level?: number }): Promise<{ ok: true; item: AiCreation } | { ok: false; error: string }> {
+  const world = await requireWorld();
+  if (!geminiEnabled()) return { ok: false, error: "ИИ выключен: добавьте GEMINI_API_KEY в файл .env и перезапустите приложение." };
+  const kind = input.kind === "spell" ? "spell" : "item";
+  const rule =
+    kind === "item"
+      ? `Обязательные условия: ${FISH_ITEM_RULE[input.tier] ?? FISH_ITEM_RULE.gear}.`
+      : `Обязательные условия: заклинание ${Math.max(0, Math.min(9, Math.round(Number(input.level) || 0)))} круга (0 — заговор). Это заклинание записано на размокшем, но читаемом свитке.`;
+  const userPrompt = `Придумай ${kind === "item" ? "предмет" : "заклинание"}. Вариантов: 1.\n${kind === "item" ? WATER : "Заклинание должно быть оригинальным и интересным для игроков."}\n${rule}`;
+  try {
+    const text = await generateJson({ system: SYSTEM[kind], prompt: userPrompt, maxTokens: TOKENS[kind] + 2000 });
+    const raws = parseVariants(text).slice(0, 1);
+    if (!raws.length) return { ok: false, error: "Gemini не вернул результат. Попробуйте ещё раз." };
+    const [item] = store(world.id, kind, `🎣 Рыбалка: ${kind === "item" ? "предмет" : "свиток"}`, raws);
+    return { ok: true, item };
+  } catch (e) {
+    const r = fail(e);
+    return { ok: false, error: r.ok ? "" : r.error };
+  }
+}
+
+/** Зацепка для сюжета через Gemini (одна-две фразы). */
+export async function aiHook(tier: TierId): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  await requireWorld();
+  if (!geminiEnabled()) return { ok: false, error: "ИИ выключен: добавьте GEMINI_API_KEY в файл .env и перезапустите приложение." };
+  const scale = TIER_ORDER_TEXT[tier] ?? "местного масштаба";
+  try {
+    const text = await generateText({
+      system: "Ты помогаешь мастеру D&D. Пиши по-русски, коротко и образно, без вступлений и кавычек.",
+      prompt: `Герои выловили из воды предмет-зацепку для приключения (бутылка с посланием, письмо, ключ, знак, карта, странная вещь). Опиши в 1–2 предложениях, что это и какую тайну или задание оно сулит. Масштаб тайны: ${scale}.`,
+      maxTokens: 600,
+    });
+    return { ok: true, text: text.trim().replace(/^["«]|["»]$/g, "").slice(0, 600) };
+  } catch (e) {
+    const r = fail(e);
+    return { ok: false, error: r.ok ? "" : r.error };
+  }
+}
+
+const TIER_ORDER_TEXT: Partial<Record<TierId, string>> = {
+  trinket: "мелкая бытовая история",
+  gear: "местная история деревни",
+  good: "история города",
+  uncommon: "заговор или тайна знатного рода",
+  rare: "опасная тайна региона",
+  "very-rare": "древняя тайна, затрагивающая королевство",
+  legendary: "легенда, способная изменить мир",
+};

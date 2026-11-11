@@ -1,326 +1,658 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
-import { fishByRoll, fishByTier, noteStash, removeStash, stashCatch, type FishCatch, type StashEntry } from "@/app/fishing-actions";
-import { ITEM_CATEGORIES, RARITIES, RARITY_COLORS, label } from "@/lib/catalog/labels";
-import { TIERS, TIER_BY_ID, rangeText, tierFor, type TierId } from "@/lib/fishing";
+import { aiCatch, aiHook } from "@/app/ai-forge-actions";
+import { creatureToBattle, fishCatch, giveCatch, noteStash, removeStash, stashCatch, type PartyMember, type StashEntry } from "@/app/fishing-actions";
+import {
+  BAITS,
+  CATCH_KINDS,
+  DEFAULT_WEIGHTS,
+  SCROLL_LEVELS,
+  TIERS,
+  TIER_BY_ID,
+  TIER_ORDER,
+  bite,
+  catchTitle,
+  fight,
+  fightDc,
+  kindIcon,
+  pickKind,
+  rangeText,
+  scrollStats,
+  tierFor,
+  type BaitId,
+  type Catch,
+  type CatchKind,
+  type CatchWeights,
+  type TierId,
+} from "@/lib/fishing";
+import { ItemCard } from "@/components/ItemCard";
+import { SpellCard } from "@/components/SpellCard";
+import { StatBlock } from "@/components/StatBlock";
 
-const LOG_KEY = "dnd-helper:fishing-log:v1";
-type LogEntry = { at: number; value: number | null; tier: TierId; name: string; rarity: string | null };
+const LOG_KEY = "dnd-helper:fishing-log:v2";
+const SETTINGS_KEY = "dnd-helper:fishing-settings:v2";
+type LogEntry = { at: number; title: string; kind: CatchKind; tier: TierId; who: string };
+type Settings = { mode: "steps" | "quick"; dc: number; bait: BaitId; source: "catalog" | "ai"; heroId: number; weights: CatchWeights };
+const DEFAULTS: Settings = { mode: "steps", dc: 12, bait: "plain", source: "catalog", heroId: 0, weights: DEFAULT_WEIGHTS };
 
 const d20 = () => 1 + Math.floor(Math.random() * 20);
-const catchName = (c: FishCatch) => c.item?.name ?? c.junk ?? "—";
-const price = (c: FishCatch) => (c.item?.price ? `${c.item.priceEstimated ? "≈" : ""}${c.item.price.toLocaleString("ru")} зм` : "");
+const num = (s: string) => (s.trim() === "" || s === "-" ? NaN : Number(s));
+const pickOne = <T,>(list: T[]): T => list[Math.floor(Math.random() * list.length)];
+/** Ключ текущего улова — чтобы «Другое» не выдало то же самое. */
+const keyOf = (c: Catch) => c.item?.key ?? c.spell?.key ?? c.monsterKey ?? c.hook ?? undefined;
 
-function CatchCard({ c, children }: { c: FishCatch; children?: React.ReactNode }) {
-  const t = TIER_BY_ID[c.tier];
-  const it = c.item;
+function TierBadge({ tier }: { tier: TierId }) {
+  const t = TIER_BY_ID[tier];
   return (
-    <div className={`card border-2 p-4 ${t.color.split(" ")[0]}`}>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className={`rounded-full border px-2 py-0.5 ${t.color}`}>
-          {t.icon} {t.title}
+    <span className={`rounded-full border px-2 py-0.5 text-sm ${t.color}`}>
+      {t.icon} {t.title}
+    </span>
+  );
+}
+
+/** Полная карточка улова. */
+function CatchView({ c, onBattle, battleBusy }: { c: Catch; onBattle?: () => void; battleBusy?: boolean }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <TierBadge tier={c.tier} />
+        <span className="text-sm text-muted">
+          {kindIcon(c.kind)} {c.kind === "junk" ? "Мусор" : CATCH_KINDS.find((k) => k.id === c.kind)?.label}
         </span>
-        {c.value !== null && <span className="text-muted">бросок {c.value}</span>}
+        {c.aiId && <span className="rounded border border-violet-500/50 px-1.5 text-xs text-violet-300" title="Сгенерировано Gemini; править можно в ИИ-кузнице">🔮 ИИ</span>}
+        {c.value !== null && <span className="text-xs text-muted">бросок {c.value}</span>}
       </div>
-      {it ? (
+      {c.kind === "item" && c.item && <ItemCard i={c.item} />}
+      {c.kind === "scroll" && c.spell && (
         <>
-          <Link href={`/items?open=${encodeURIComponent(it.key)}`} target="_blank" className={`mt-2 block font-display text-3xl hover:underline ${it.rarity ? (RARITY_COLORS[it.rarity] ?? "") : ""}`}>
-            {it.name}
-          </Link>
-          {it.nameEn !== it.name && <div className="text-xs text-muted">{it.nameEn}</div>}
-          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
-            <span>{label(ITEM_CATEGORIES, it.category)}</span>
-            {it.rarity && <span>{label(RARITIES, it.rarity)}</span>}
-            {it.attunement && <span>требует настройки</span>}
-            {price(c) && <span>{price(c)}</span>}
+          <div className="card border-amber-500/40 p-3 text-sm">
+            📜 <b>Свиток заклинания</b> · {c.spell.level ? `${c.spell.level} круг` : "заговор"} · Сл спасброска <b>{c.scroll?.dc}</b>, бонус атаки <b>+{c.scroll?.attack}</b>. Если заклинания нет в списке
+            класса читающего — проверка базовой характеристики Сл {10 + (c.spell.level || 0)}.
           </div>
-          {it.desc && (
-            <details className="mt-2 text-sm">
-              <summary className="cursor-pointer text-muted">Описание</summary>
-              <p className="mt-1 max-h-64 overflow-y-auto whitespace-pre-line">{it.desc.replace(/\\n/g, "\n")}</p>
-            </details>
-          )}
+          <SpellCard s={c.spell} />
         </>
-      ) : (
-        <p className="mt-2 font-display text-2xl">{c.junk}</p>
       )}
-      {children && <div className="mt-3 flex flex-wrap gap-2">{children}</div>}
+      {c.kind === "treasure" && c.treasure && (
+        <div className="card space-y-1 p-4">
+          <div className="font-display text-2xl text-accent">💰 Сокровище · ≈ {c.treasure.gp.toLocaleString("ru")} зм</div>
+          {c.treasure.lines.map((l, i) => (
+            <p key={i}>{l}</p>
+          ))}
+        </div>
+      )}
+      {c.kind === "hook" && c.hook && (
+        <div className="card border-l-4 border-l-accent p-4 font-display text-xl leading-relaxed" style={{ borderRadius: 0 }}>
+          🍾 {c.hook}
+        </div>
+      )}
+      {c.kind === "creature" && c.monster && (
+        <>
+          <div className="card flex flex-wrap items-center gap-2 border-red-500/40 p-3 text-sm">
+            🐙 Из воды показывается <b>{c.monster.name}</b> — и оно не намерено отпускать леску!
+            {onBattle && (
+              <button type="button" className="btn btn-danger ml-auto" disabled={battleBusy} onClick={onBattle}>
+                {battleBusy ? "…" : "⚔️ В бой"}
+              </button>
+            )}
+          </div>
+          <StatBlock m={c.monster} lang="ru" />
+        </>
+      )}
+      {c.kind === "junk" && <div className="card p-4 font-display text-2xl">🥾 {c.junk}</div>}
     </div>
   );
 }
 
-export function FishingTable({ initialStash }: { initialStash: StashEntry[] }) {
-  const [value, setValue] = useState("");
+export function FishingTable({ initialStash, party, aiEnabled }: { initialStash: StashEntry[]; party: PartyMember[]; aiEnabled: boolean }) {
+  const [cfg, setCfg] = useState<Settings>(DEFAULTS);
+  const [showWeights, setShowWeights] = useState(false);
+  // Сцена
+  const [stage, setStage] = useState<"idle" | "fight" | "done">("idle");
+  const [nat, setNat] = useState("");
   const [bonus, setBonus] = useState("0");
-  const [current, setCurrent] = useState<FishCatch | null>(null);
-  const [stash, setStash] = useState(initialStash);
-  const [log, setLog] = useState<LogEntry[]>([]);
-  const [note, setNote] = useState("");
+  const [hookTier, setHookTier] = useState<TierId>("trinket");
+  const [round, setRound] = useState(1);
+  const [maxRounds, setMaxRounds] = useState(3);
+  const [events, setEvents] = useState<string[]>([]);
+  const [quickTotal, setQuickTotal] = useState("");
+  // Улов
+  const [current, setCurrent] = useState<Catch | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const [notice, setNotice] = useState<string | null>(null);
+  const [stash, setStash] = useState(initialStash);
+  const [note, setNote] = useState("");
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [prepTier, setPrepTier] = useState<TierId>("uncommon");
+  const [prepKind, setPrepKind] = useState<"" | Exclude<CatchKind, "junk">>("");
+  const [battlePending, startBattle] = useTransition();
 
-  // Улов сессии — в браузере, чтобы не терять при перезагрузке.
+  // Настройки и журнал — в браузере
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(LOG_KEY);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage доступен только на клиенте
-      if (raw) setLog(JSON.parse(raw) as LogEntry[]);
-    } catch {}
+      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "null") as Partial<Settings> | null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- однократная загрузка из localStorage
+      if (s) setCfg({ ...DEFAULTS, ...s, weights: { ...DEFAULT_WEIGHTS, ...(s.weights ?? {}) } });
+      setLog(JSON.parse(localStorage.getItem(LOG_KEY) ?? "[]") as LogEntry[]);
+    } catch {
+      /* нет доступа к localStorage */
+    }
   }, []);
-  const saveLog = (next: LogEntry[]) => {
-    setLog(next);
-    try {
-      localStorage.setItem(LOG_KEY, JSON.stringify(next.slice(0, 60)));
-    } catch {}
+  const save = (p: Partial<Settings>) =>
+    setCfg((c) => {
+      const next = { ...c, ...p };
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  const pushLog = (e: LogEntry) =>
+    setLog((l) => {
+      const next = [e, ...l].slice(0, 100);
+      try {
+        localStorage.setItem(LOG_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  const say = (m: string) => {
+    setNotice(m);
+    setTimeout(() => setNotice((n) => (n === m ? null : n)), 4000);
   };
 
-  const run = (fn: () => Promise<void>) =>
-    start(async () => {
-      setError(null);
-      try {
-        await fn();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Не получилось");
-      }
-    });
+  const ai = cfg.source === "ai" && aiEnabled;
+  const hero = party.find((p) => p.id === cfg.heroId);
 
-  const total = (v: number) => v + (Math.round(Number(bonus)) || 0);
-  const cast = (raw: number) => run(async () => setCurrent(await fishByRoll(total(raw))));
-  const reroll = () =>
-    current &&
-    run(async () => setCurrent(current.value !== null ? await fishByRoll(current.value, current.item?.key) : await fishByTier(current.tier, current.item?.key)));
-  const preview = (tier: TierId) => run(async () => setCurrent(await fishByTier(tier)));
-  const give = (c: FishCatch) => saveLog([{ at: Date.now(), value: c.value, tier: c.tier, name: catchName(c), rarity: c.item?.rarity ?? null }, ...log]);
+  /** Собрать улов уровня tier (вид — по весам, если не задан). С ИИ предметы, свитки и зацепки придумывает Gemini. */
+  async function produce(tier: TierId, kind?: CatchKind, exclude?: string, value: number | null = null): Promise<Catch> {
+    const k: CatchKind = tier === "junk" ? "junk" : (kind ?? pickKind(cfg.weights));
+    if (ai && (k === "item" || k === "scroll")) {
+      const level = pickOne(SCROLL_LEVELS[tier] ?? [1]);
+      const r = await aiCatch({ kind: k === "item" ? "item" : "spell", tier, level });
+      if (r.ok) {
+        const e = r.item.entity;
+        if (e.kind === "item") return { tier, kind: "item", value, item: e.item, aiId: r.item.id };
+        if (e.kind === "spell") return { tier, kind: "scroll", value, spell: e.spell, scroll: { level: e.spell.level, ...scrollStats(e.spell.level) }, aiId: r.item.id };
+      } else setError(`${r.error} Взял вещь из каталога.`);
+    }
+    if (ai && k === "hook") {
+      const r = await aiHook(tier);
+      if (r.ok) return { tier, kind: "hook", value, hook: r.text };
+      setError(`${r.error} Взял зацепку из списка.`);
+    }
+    return fishCatch({ tier, kind: k, weights: cfg.weights, value, excludeKey: exclude });
+  }
 
-  const shownValue = current?.value ?? null;
-  const matching = current ? stash.filter((s) => s.tier === current.tier) : [];
-  const rolledTier = value.trim() ? tierFor(total(Number(value) || 0)) : null;
+  async function reveal(tier: TierId, kind?: CatchKind, value: number | null = null) {
+    setBusy(true);
+    try {
+      const c = await produce(tier, kind, undefined, value);
+      setCurrent(c);
+      setStage("done");
+      setNote("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось достать улов");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function reset() {
+    setStage("idle");
+    setCurrent(null);
+    setEvents([]);
+    setNat("");
+    setError(null);
+  }
+
+  // ---------- Шаги ----------
+  function doBite() {
+    setError(null);
+    const n = num(nat);
+    const b = num(bonus) || 0;
+    if (!Number.isFinite(n) || n < 1 || n > 20) return setError("Впишите, что выпало на d20 (1–20), или нажмите 🎲.");
+    const total = n + b;
+    const r = bite(n, total, cfg.dc, cfg.bait);
+    const head = `Поклёвка: ${n}${b ? ` ${b > 0 ? "+" : "−"} ${Math.abs(b)} = ${total}` : ""} против Сл ${cfg.dc}.`;
+    if (r.outcome === "creature") {
+      setEvents([head, n === 1 ? "Натуральная 1! Что-то огромное хватает наживку и тянет рыбака к воде…" : "Магическая приманка привлекла что-то голодное…"]);
+      void reveal("good", "creature");
+    } else if (r.outcome === "miss") {
+      setEvents([head, "Не клюёт… На крючке только мусор."]);
+      void reveal("junk", "junk");
+    } else {
+      setEvents([head, r.legendary ? "Натуральная 20 — ЛЕГЕНДАРНАЯ поклёвка! Удочка гнётся дугой." : "Клюёт! Леска натянулась."]);
+      setHookTier(r.tier);
+      setRound(1);
+      setMaxRounds(r.rounds);
+      setStage("fight");
+      setNat("");
+    }
+  }
+
+  function doFight() {
+    setError(null);
+    const n = num(nat);
+    const b = num(bonus) || 0;
+    if (!Number.isFinite(n) || n < 1 || n > 20) return setError("Впишите, что выпало на d20 (1–20), или нажмите 🎲.");
+    const dc = fightDc(cfg.dc, round);
+    const r = fight(hookTier, n, n + b, dc);
+    setEvents((e) => [...e, `Рывок ${round}: ${n + b} против Сл ${dc}. ${r.note}`]);
+    setHookTier(r.tier);
+    setNat("");
+    if (r.snapped || round >= maxRounds) {
+      if (!r.snapped) setEvents((e) => [...e, "Улов на берегу!"]);
+      void reveal(r.tier);
+    } else setRound(round + 1);
+  }
+
+  function doQuick() {
+    setError(null);
+    const v = num(quickTotal);
+    if (!Number.isFinite(v)) return setError("Впишите итог броска (d20 + бонус).");
+    setEvents([`Быстрый улов: ${v} → ${TIER_BY_ID[tierFor(v).id].title}`]);
+    void reveal(tierFor(v).id, undefined, v);
+  }
+
+  // ---------- Действия с уловом ----------
+  async function reroll(sameKind: boolean) {
+    if (!current) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setCurrent(await produce(current.tier, sameKind ? current.kind : undefined, sameKind ? keyOf(current) : undefined, current.value));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function give() {
+    if (!current) return;
+    if (hero && current.kind !== "creature") {
+      const r = await giveCatch(hero.id, current);
+      if (!r.ok) return setError(r.error ?? "Не удалось выдать");
+      say(`Записано в лист: ${hero.name}`);
+    }
+    pushLog({ at: Date.now(), title: catchTitle(current), kind: current.kind, tier: current.tier, who: hero?.name ?? "" });
+    reset();
+  }
+
+  async function toStash() {
+    if (!current) return;
+    setStash(await stashCatch(current, note));
+    say("Отложено в заготовки");
+  }
+
+  async function prepare() {
+    setBusy(true);
+    setError(null);
+    try {
+      const c = await produce(prepTier, prepKind || undefined);
+      setStash(await stashCatch(c, ""));
+      say(`Заготовка: ${catchTitle(c)}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const matching = current ? stash.filter((s) => s.tier === current.tier && current.tier !== "junk") : [];
+  const fightDcNow = fightDc(cfg.dc, round);
+  const inputCls = "input w-full text-center text-xl";
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)_24rem]">
-      {/* ---------- Бросок и таблица уровней ---------- */}
-      <aside className="space-y-4">
+    <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)_22rem]">
+      {/* ================= Слева: заброс ================= */}
+      <div className="space-y-4">
         <section className="card space-y-3 p-4">
-          <h1 className="font-display text-2xl text-accent">🎣 Рыбалка</h1>
-          <p className="text-xs text-muted">Чем выше бросок (d20 + бонус), тем круче вещь. Выпало у игрока — впишите число; или бросьте здесь.</p>
-          <div className="flex items-end gap-2">
-            <label className="block flex-1">
-              <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Выпало на d20</span>
-              <input
-                value={value}
-                onChange={(e) => setValue(e.target.value.replace(/[^\d-]/g, ""))}
-                onKeyDown={(e) => e.key === "Enter" && value.trim() && cast(Number(value))}
-                inputMode="numeric"
-                placeholder="1–20"
-                className="input w-full text-center font-display text-3xl"
-              />
-            </label>
-            <label className="block w-20">
-              <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Бонус</span>
-              <input value={bonus} onChange={(e) => setBonus(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className="input w-full text-center text-xl" title="Например, бонус Выживания или удочка получше" />
-            </label>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-2xl text-accent">🎣 Заброс</h2>
+            <div className="ml-auto flex overflow-hidden rounded-md border border-border text-xs">
+              {(
+                [
+                  ["steps", "Сцена"],
+                  ["quick", "Быстро"],
+                ] as const
+              ).map(([m, l]) => (
+                <button key={m} type="button" onClick={() => (save({ mode: m }), reset())} className={`px-2.5 py-1 ${cfg.mode === m ? "bg-panel-2 text-accent" : "text-muted hover:text-text"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
-          {rolledTier && (
-            <p className="text-xs text-muted">
-              итого {total(Number(value) || 0)} → <span className={rolledTier.color.split(" ")[1]}>{rolledTier.icon} {rolledTier.title}</span>
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-2">
-            <button type="button" className="btn btn-primary py-2" disabled={pending || !value.trim()} onClick={() => cast(Number(value))}>
-              🪝 Тянуть
-            </button>
-            <button
-              type="button"
-              className="btn py-2"
-              disabled={pending}
-              onClick={() => {
-                const r = d20();
-                setValue(String(r));
-                cast(r);
-              }}
-            >
-              🎲 Бросить d20
-            </button>
-          </div>
-        </section>
 
-        <section className="card p-3">
-          <h2 className="mb-2 font-display text-lg text-accent">Что можно выловить</h2>
-          <ul className="space-y-1.5">
-            {TIERS.map((t) => {
-              const active = current?.tier === t.id;
-              const saved = stash.filter((s) => s.tier === t.id).length;
-              return (
-                <li key={t.id} className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${active ? t.color.split(" ")[0] + " bg-panel-2" : "border-border"}`}>
-                  <span className="w-12 shrink-0 text-center font-mono text-xs text-muted">{rangeText(t)}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-sm ${t.color.split(" ")[1]}`}>
-                      {t.icon} {t.title} {saved > 0 && <span className="text-xs text-muted">· ⭐{saved}</span>}
-                    </span>
-                    <span className="block truncate text-[11px] text-muted">{t.hint}</span>
-                  </span>
-                  <button type="button" className="btn px-2 py-0.5 text-xs" disabled={pending} onClick={() => preview(t.id)} title="Сгенерировать вариант этого уровня — например, чтобы заранее отложить в заготовки">
-                    🎲
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Кто ловит</span>
+              <select value={cfg.heroId} onChange={(e) => save({ heroId: Number(e.target.value) })} className="input w-full py-1 text-sm">
+                <option value={0}>— никто —</option>
+                {party.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {cfg.mode === "steps" && (
+              <label className="block">
+                <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Сл ловли</span>
+                <input type="number" value={cfg.dc} min={5} max={30} onChange={(e) => save({ dc: Math.max(5, Math.min(30, Number(e.target.value) || 12)) })} className="input w-full py-1 text-center" />
+              </label>
+            )}
+          </div>
+
+          {cfg.mode === "steps" && (
+            <div className="space-y-1">
+              <span className="block text-xs uppercase tracking-wide text-muted">Наживка</span>
+              <div className="grid grid-cols-3 gap-1">
+                {BAITS.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    title={b.hint}
+                    onClick={() => save({ bait: b.id })}
+                    className={`rounded-md border px-1 py-1.5 text-xs ${cfg.bait === b.id ? "border-accent bg-panel-2 text-accent" : "border-border text-muted hover:text-text"}`}
+                  >
+                    {b.icon} {b.label}
                   </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      </aside>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted">{BAITS.find((b) => b.id === cfg.bait)?.hint}</p>
+            </div>
+          )}
 
-      {/* ---------- Улов ---------- */}
-      <section className="min-w-0 space-y-3">
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        {pending && !current && <div className="card p-8 text-center text-muted">Тянем…</div>}
-        {!current && !pending && (
-          <div className="card p-10 text-center text-muted">
-            <p className="text-5xl">🎣</p>
-            <p className="mt-3 font-display text-xl text-accent">Леска натянута…</p>
-            <p className="mt-1 text-sm">Впишите бросок игрока или бросьте d20 слева.</p>
-          </div>
-        )}
-        {current && (
-          <div className={pending ? "opacity-60 transition" : "transition"}>
-            <CatchCard c={current}>
-              <button type="button" className="btn btn-primary" disabled={pending} onClick={() => give(current)}>
-                ✓ Выдать игрокам
+          <div className="space-y-1">
+            <span className="block text-xs uppercase tracking-wide text-muted">Откуда вещи и свитки</span>
+            <div className="grid grid-cols-2 gap-1 text-xs">
+              <button type="button" onClick={() => save({ source: "catalog" })} className={`rounded-md border px-2 py-1.5 ${cfg.source === "catalog" ? "border-accent bg-panel-2 text-accent" : "border-border text-muted"}`}>
+                📚 Каталог
               </button>
-              <button type="button" className="btn" disabled={pending} onClick={reroll} title="Другая вещь того же уровня">
-                🔄 Другая вещь
-              </button>
-              <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="заметка: для кого, где спрятано…" className="input min-w-0 flex-1 py-1 text-sm" />
               <button
                 type="button"
-                className="btn"
-                disabled={pending}
-                onClick={() =>
-                  run(async () => {
-                    setStash(await stashCatch(current, note));
-                    setNote("");
-                  })
-                }
-                title="Отложить на будущее"
+                disabled={!aiEnabled}
+                title={aiEnabled ? "Gemini придумывает вещь со статблоком и историей (≈0,1–0,2 цента)" : "Нужен GEMINI_API_KEY в .env"}
+                onClick={() => save({ source: "ai" })}
+                className={`rounded-md border px-2 py-1.5 ${cfg.source === "ai" ? "border-violet-500 bg-panel-2 text-violet-300" : "border-border text-muted"} disabled:opacity-40`}
               >
+                🔮 ИИ (Gemini)
+              </button>
+            </div>
+          </div>
+
+          <button type="button" className="text-xs text-muted hover:text-accent" onClick={() => setShowWeights((v) => !v)}>
+            {showWeights ? "▾" : "▸"} Шансы видов улова
+          </button>
+          {showWeights && (
+            <div className="grid grid-cols-5 gap-1 text-center text-xs">
+              {CATCH_KINDS.map((k) => (
+                <label key={k.id} className="block" title={k.label}>
+                  <span className="block">{k.icon}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={cfg.weights[k.id]}
+                    onChange={(e) => save({ weights: { ...cfg.weights, [k.id]: Math.max(0, Number(e.target.value) || 0) } })}
+                    className="input w-full px-1 py-0.5 text-center text-xs"
+                  />
+                </label>
+              ))}
+              <button type="button" className="col-span-5 text-[11px] text-muted hover:text-text" onClick={() => save({ weights: DEFAULT_WEIGHTS })}>
+                сбросить (45 / 20 / 20 / 10 / 5)
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* Шаги сцены */}
+        {cfg.mode === "steps" ? (
+          <section className="card space-y-3 p-4">
+            {stage === "idle" && (
+              <>
+                <h3 className="font-display text-lg">1. Поклёвка</h3>
+                <p className="text-xs text-muted">
+                  Проверка Мудрости (Выживание) против Сл {cfg.dc}. Чем больше запас — тем лучше то, что клюнуло. 20 — легендарная поклёвка, 1 — {cfg.bait === "magic" ? "1–3 — " : ""}из воды тянут рыбака.
+                </p>
+              </>
+            )}
+            {stage === "fight" && (
+              <>
+                <h3 className="font-display text-lg">
+                  2. Борьба — рывок {round} из {maxRounds}
+                </h3>
+                <div className="flex items-center gap-2 text-sm">
+                  На крючке: <TierBadge tier={hookTier} />
+                </div>
+                <p className="text-xs text-muted">Проверка Силы (Атлетика) против Сл {fightDcNow}. Успех — улов на ступень лучше, провал — леска рвётся (остаётся то, что есть).</p>
+              </>
+            )}
+            {stage !== "done" && (
+              <>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-muted">d20</span>
+                    <input value={nat} onChange={(e) => setNat(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" className={inputCls} placeholder="—" />
+                  </label>
+                  <span className="pb-2 text-xl text-muted">+</span>
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-muted">бонус</span>
+                    <input value={bonus} onChange={(e) => setBonus(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className={inputCls} />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" className="btn" onClick={() => setNat(String(d20()))} title="Бросить d20 здесь">
+                    🎲
+                  </button>
+                  <button type="button" className="btn btn-primary flex-1" disabled={busy} onClick={stage === "fight" ? doFight : doBite}>
+                    {stage === "fight" ? "💪 Тянуть" : "🪝 Подсечь"}
+                  </button>
+                  {stage === "fight" && (
+                    <button type="button" className="btn" disabled={busy} onClick={() => void reveal(hookTier)} title="Не рисковать: вытащить то, что уже на крючке">
+                      Вытащить
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            {stage === "done" && (
+              <button type="button" className="btn btn-primary w-full" onClick={reset}>
+                🎣 Новый заброс
+              </button>
+            )}
+            {events.length > 0 && (
+              <ol className="space-y-1 border-t border-border pt-2 text-xs text-muted">
+                {events.map((e, i) => (
+                  <li key={i}>• {e}</li>
+                ))}
+              </ol>
+            )}
+          </section>
+        ) : (
+          <section className="card space-y-3 p-4">
+            <p className="text-xs text-muted">Один бросок (d20 + бонус): чем выше, тем круче улов.</p>
+            <div className="flex gap-2">
+              <input value={quickTotal} onChange={(e) => setQuickTotal(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className={inputCls} placeholder="итог" />
+              <button type="button" className="btn" onClick={() => setQuickTotal(String(d20()))}>
+                🎲
+              </button>
+            </div>
+            <button type="button" className="btn btn-primary w-full" disabled={busy} onClick={doQuick}>
+              🪝 Тянуть
+            </button>
+            <table className="w-full text-xs">
+              <tbody>
+                {TIERS.map((t) => (
+                  <tr key={t.id} className="border-t border-border">
+                    <td className="py-1 font-mono">{rangeText(t)}</td>
+                    <td className={t.color.split(" ").slice(1).join(" ")}>
+                      {t.icon} {t.title}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        )}
+      </div>
+
+      {/* ================= Центр: улов ================= */}
+      <div className="min-w-0 space-y-3">
+        {error && <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-sm text-amber-200">{error}</p>}
+        {notice && <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-2 text-sm text-emerald-300">{notice}</p>}
+        {busy && <div className="card animate-pulse p-4 text-center text-muted">{ai ? "Gemini придумывает находку… 5–20 секунд" : "Тянем…"}</div>}
+        {current ? (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void give()} title={hero ? `Записать в лист: ${hero.name}` : "Отметить в журнале сессии"}>
+                ✓ Выдать{hero && current.kind !== "creature" ? ` → ${hero.name}` : ""}
+              </button>
+              {current.kind !== "junk" && (
+                <button type="button" className="btn" disabled={busy} onClick={() => void reroll(true)}>
+                  🔄 Другое такое же
+                </button>
+              )}
+              {current.tier !== "junk" && (
+                <button type="button" className="btn" disabled={busy} onClick={() => void reroll(false)}>
+                  🎲 Другой вид
+                </button>
+              )}
+              <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="заметка к заготовке" className="input min-w-0 flex-1 py-1 text-sm" />
+              <button type="button" className="btn" onClick={() => void toStash()}>
                 ⭐ В заготовки
               </button>
-            </CatchCard>
-            {shownValue === null && <p className="mt-1 text-xs text-muted">Это пример для уровня «{TIER_BY_ID[current.tier].title}» — без броска.</p>}
-          </div>
-        )}
-
-        {current && matching.length > 0 && (
-          <div className="card p-3">
-            <h3 className="mb-2 text-sm text-muted">⭐ Есть заготовки для этого уровня — можно выдать вместо случайной вещи:</h3>
-            <ul className="space-y-1.5">
-              {matching.map((s) => (
-                <li key={s.id} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className={`min-w-0 flex-1 truncate ${s.catch.item?.rarity ? (RARITY_COLORS[s.catch.item.rarity] ?? "") : ""}`}>
-                    {catchName(s.catch)}
-                    {s.note && <span className="text-xs text-muted"> · {s.note}</span>}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn px-2 py-0.5 text-xs"
-                    disabled={pending}
-                    onClick={() =>
-                      run(async () => {
+            </div>
+            {matching.length > 0 && (
+              <div className="card space-y-1 border-amber-500/40 p-3 text-sm">
+                <div className="text-amber-200">⭐ Есть заготовки этого уровня — можно выдать их вместо случайного улова:</div>
+                {matching.map((s) => (
+                  <div key={s.id} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">
+                      {kindIcon(s.catch.kind)} {catchTitle(s.catch)}
+                      {s.note && <span className="text-muted"> — {s.note}</span>}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn px-2 py-0.5 text-xs"
+                      onClick={async () => {
                         setCurrent({ ...s.catch, value: current.value });
-                        give({ ...s.catch, value: current.value });
                         setStash(await removeStash(s.id));
-                      })
-                    }
-                  >
-                    ✓ Выдать её
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+                      }}
+                    >
+                      Взять
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <CatchView c={current} battleBusy={battlePending} onBattle={current.monsterKey ? () => startBattle(() => creatureToBattle(current.monsterKey!)) : undefined} />
+          </>
+        ) : (
+          !busy && (
+            <div className="card p-8 text-center text-sm text-muted">
+              {cfg.mode === "steps" ? (
+                <>
+                  Сцена рыбалки: <b>поклёвка</b> (Мудрость/Выживание) решает, что клюнуло, затем до {3} рывков <b>борьбы</b> (Сила/Атлетика) — каждый успех делает улов лучше, провал рвёт леску. На
+                  крючке может оказаться предмет, свиток, сокровище, зацепка для сюжета или водное существо.
+                </>
+              ) : (
+                "Впишите итог броска и нажмите «Тянуть»."
+              )}
+            </div>
+          )
         )}
 
         {log.length > 0 && (
-          <div className="card p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <h3 className="font-display text-lg text-accent">🐟 Улов сессии</h3>
-              <span className="text-xs text-muted">{log.length}</span>
-              <button type="button" className="ml-auto text-xs text-muted hover:text-red-400" onClick={() => confirm("Очистить улов сессии?") && saveLog([])}>
+          <section className="card p-3">
+            <div className="mb-2 flex items-center">
+              <h3 className="font-display text-lg text-accent">Улов сессии</h3>
+              <button
+                type="button"
+                className="ml-auto text-xs text-muted hover:text-red-400"
+                onClick={() => {
+                  if (!confirm("Очистить журнал улова?")) return;
+                  setLog([]);
+                  try {
+                    localStorage.removeItem(LOG_KEY);
+                  } catch {}
+                }}
+              >
                 очистить
               </button>
             </div>
             <ul className="space-y-1 text-sm">
-              {log.map((l) => (
-                <li key={l.at} className="flex items-center gap-2">
-                  <span className="w-10 shrink-0 text-center font-mono text-xs text-muted">{l.value ?? "—"}</span>
-                  <span>{TIER_BY_ID[l.tier]?.icon}</span>
-                  <span className={`min-w-0 flex-1 truncate ${l.rarity ? (RARITY_COLORS[l.rarity] ?? "") : ""}`}>{l.name}</span>
-                  <span className="text-[11px] text-muted">{new Date(l.at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}</span>
+              {log.map((e) => (
+                <li key={e.at} className="flex gap-2">
+                  <span>{kindIcon(e.kind)}</span>
+                  <span className={`min-w-0 flex-1 truncate ${TIER_BY_ID[e.tier]?.color.split(" ").slice(1).join(" ")}`}>{e.title}</span>
+                  {e.who && <span className="text-muted">→ {e.who}</span>}
+                  <span className="text-xs text-muted">{new Date(e.at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}</span>
                 </li>
               ))}
             </ul>
-          </div>
+          </section>
         )}
-      </section>
+      </div>
 
-      {/* ---------- Заготовки ---------- */}
-      <aside className="card min-w-0 space-y-3 p-3 xl:sticky xl:top-[calc(var(--header-h,49px)+1rem)] xl:max-h-[calc(100dvh-var(--header-h,49px)-2rem)] xl:self-start xl:overflow-y-auto">
-        <div>
-          <h2 className="font-display text-lg text-accent">⭐ Заготовки</h2>
-          <p className="text-xs text-muted">Понравившийся улов, отложенный наперёд. Когда бросок попадёт в тот же уровень, заготовка предложится сама.</p>
-        </div>
-        {stash.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted">Пока пусто. Нажмите «⭐ В заготовки» у улова или 🎲 у уровня, чтобы набрать варианты заранее.</p>}
-        {TIERS.filter((t) => stash.some((s) => s.tier === t.id)).map((t) => (
-          <div key={t.id}>
-            <h3 className={`mb-1 text-xs uppercase tracking-wide ${t.color.split(" ")[1]}`}>
-              {t.icon} {t.title} · {rangeText(t)}
-            </h3>
-            <ul className="space-y-1.5">
-              {stash
-                .filter((s) => s.tier === t.id)
-                .map((s) => (
-                  <li key={s.id} className="rounded-lg border border-border bg-panel-2/40 p-2">
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className={`min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline ${s.catch.item?.rarity ? (RARITY_COLORS[s.catch.item.rarity] ?? "") : ""}`}
-                        onClick={() => setCurrent(s.catch)}
-                        title="Показать"
-                      >
-                        {catchName(s.catch)}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn px-2 py-0.5 text-xs"
-                        disabled={pending}
-                        title="Выдать игрокам и убрать из заготовок"
-                        onClick={() =>
-                          run(async () => {
-                            give(s.catch);
-                            setStash(await removeStash(s.id));
-                          })
-                        }
-                      >
-                        ✓
-                      </button>
-                      <button type="button" className="px-1 text-muted hover:text-red-400" disabled={pending} onClick={() => confirm(`Удалить «${catchName(s.catch)}» из заготовок?`) && run(async () => setStash(await removeStash(s.id)))} aria-label="Удалить">
-                        ✕
-                      </button>
-                    </div>
-                    {price(s.catch) && <div className="text-[11px] text-muted">{price(s.catch)}</div>}
-                    <input
-                      defaultValue={s.note}
-                      onBlur={(e) => e.target.value !== s.note && noteStash(s.id, e.target.value)}
-                      maxLength={300}
-                      placeholder="заметка…"
-                      className="mt-1 w-full rounded border border-border bg-bg/40 px-2 py-0.5 text-xs"
-                    />
-                  </li>
-                ))}
-            </ul>
+      {/* ================= Справа: заготовки ================= */}
+      <aside className="card flex max-h-[calc(100dvh-var(--header-h,49px)-2rem)] flex-col overflow-hidden xl:sticky xl:top-[calc(var(--header-h,49px)+1rem)]">
+        <div className="space-y-2 border-b border-border p-3">
+          <h3 className="font-display text-lg text-accent">⭐ Заготовки</h3>
+          <div className="flex gap-1">
+            <select value={prepTier} onChange={(e) => setPrepTier(e.target.value as TierId)} className="input min-w-0 flex-1 py-1 text-xs" aria-label="Уровень">
+              {TIER_ORDER.map((t) => (
+                <option key={t} value={t}>
+                  {TIER_BY_ID[t].icon} {TIER_BY_ID[t].title}
+                </option>
+              ))}
+            </select>
+            <select value={prepKind} onChange={(e) => setPrepKind(e.target.value as typeof prepKind)} className="input py-1 text-xs" aria-label="Вид">
+              <option value="">любой</option>
+              {CATCH_KINDS.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.icon} {k.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn px-2 py-1 text-xs" disabled={busy} onClick={() => void prepare()} title="Сгенерировать и отложить заранее">
+              🎲
+            </button>
           </div>
-        ))}
+        </div>
+        <ul className="flex-1 overflow-y-auto">
+          {stash.length === 0 && <li className="p-4 text-center text-sm text-muted">Пока пусто: откладывайте понравившийся улов или заготовьте кнопкой 🎲</li>}
+          {TIER_ORDER.filter((t) => stash.some((s) => s.tier === t)).map((t) => (
+            <li key={t}>
+              <div className={`border-b border-border bg-panel-2/40 px-3 py-1 text-xs ${TIER_BY_ID[t].color.split(" ").slice(1).join(" ")}`}>
+                {TIER_BY_ID[t].icon} {TIER_BY_ID[t].title}
+              </div>
+              <ul>
+                {stash
+                  .filter((s) => s.tier === t)
+                  .map((s) => (
+                    <li key={s.id} className="group border-b border-border px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <button type="button" className="min-w-0 flex-1 truncate text-left hover:text-accent" onClick={() => (setCurrent(s.catch), setStage("done"))} title="Показать карточку">
+                          {kindIcon(s.catch.kind)} {catchTitle(s.catch)}
+                        </button>
+                        <button type="button" className="text-muted opacity-0 hover:text-red-400 group-hover:opacity-100" onClick={async () => setStash(await removeStash(s.id))} title="Убрать">
+                          ✕
+                        </button>
+                      </div>
+                      <input
+                        defaultValue={s.note}
+                        onBlur={(e) => e.target.value !== s.note && void noteStash(s.id, e.target.value)}
+                        placeholder="заметка…"
+                        className="mt-1 w-full bg-transparent text-xs text-muted outline-none focus:text-text"
+                      />
+                    </li>
+                  ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
       </aside>
     </div>
   );
