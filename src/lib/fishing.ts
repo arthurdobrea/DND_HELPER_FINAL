@@ -90,7 +90,7 @@ export const JUNK: string[] = [
 ];
 
 // =====================================================================
-// Рыбалка как сцена: поклёвка → борьба → улов разных видов
+// Улов разных видов: предмет, свиток, сокровище, зацепка, существо
 // =====================================================================
 
 /** Уровни улова по возрастанию (без мусора). */
@@ -123,46 +123,6 @@ export function pickKind(w: CatchWeights): Exclude<CatchKind, "junk"> {
     if (r < 0) return k;
   }
   return "item";
-}
-
-/** Наживка: сдвиг стартового уровня и риск вытащить чудовище. */
-export type BaitId = "plain" | "shiny" | "magic";
-export const BAITS: { id: BaitId; icon: string; label: string; hint: string; steps: number; creatureOn: number }[] = [
-  { id: "plain", icon: "🪱", label: "Червяк", hint: "без бонусов", steps: 0, creatureOn: 1 },
-  { id: "shiny", icon: "✨", label: "Блесна", hint: "улов на ступень лучше", steps: 1, creatureOn: 1 },
-  { id: "magic", icon: "🔮", label: "Магическая приманка", hint: "на 2 ступени лучше, но на 1–3 клюёт чудовище", steps: 2, creatureOn: 3 },
-];
-
-export type BiteResult =
-  | { outcome: "miss" }
-  | { outcome: "creature" }
-  | { outcome: "hooked"; tier: TierId; rounds: number; legendary: boolean };
-
-/**
- * Поклёвка: проверка Мудрости (Выживание) против Сл. natural — то, что выпало на кубике (для 1 и 20).
- * Чем больше запас над Сл, тем лучше то, что село на крючок; натуральная 20 — «легендарная поклёвка» (+1 раунд борьбы).
- */
-export function bite(natural: number, total: number, dc: number, bait: BaitId): BiteResult {
-  const b = BAITS.find((x) => x.id === bait) ?? BAITS[0];
-  if (natural >= 1 && natural <= b.creatureOn) return { outcome: "creature" };
-  if (natural !== 20 && total < dc) return { outcome: "miss" };
-  const margin = total - dc;
-  let tier: TierId = natural === 20 ? "uncommon" : margin >= 8 ? "good" : margin >= 4 ? "gear" : "trinket";
-  tier = stepTier(tier, b.steps);
-  return { outcome: "hooked", tier, rounds: natural === 20 ? 4 : 3, legendary: natural === 20 };
-}
-
-/** Сл раунда борьбы: каждый следующий рывок тяжелее. */
-export const fightDc = (dc: number, round: number) => dc + 2 * (round - 1);
-
-export type FightResult = { tier: TierId; snapped: boolean; note: string };
-
-/** Раунд борьбы: проверка Силы (Атлетика). Успех — улов на ступень лучше (на 20 — на две); провал — леска рвётся. */
-export function fight(tier: TierId, natural: number, total: number, dc: number): FightResult {
-  if (natural === 20) return { tier: stepTier(tier, 2), snapped: false, note: "Мощный рывок! Улов на две ступени лучше." };
-  if (natural === 1) return { tier: stepTier(tier, -1), snapped: true, note: "Леска лопнула, и часть улова сорвалась." };
-  if (total >= dc) return { tier: stepTier(tier, 1), snapped: false, note: "Тянете! Что-то тяжёлое поднимается со дна." };
-  return { tier, snapped: true, note: "Леска рвётся — вытаскиваете то, что успели подтянуть." };
 }
 
 // ---------- Свитки ----------

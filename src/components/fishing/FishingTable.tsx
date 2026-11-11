@@ -4,23 +4,18 @@ import { useEffect, useState, useTransition } from "react";
 import { aiCatch, aiHook } from "@/app/ai-forge-actions";
 import { creatureToBattle, fishCatch, giveCatch, noteStash, removeStash, stashCatch, type PartyMember, type StashEntry } from "@/app/fishing-actions";
 import {
-  BAITS,
   CATCH_KINDS,
   DEFAULT_WEIGHTS,
   SCROLL_LEVELS,
   TIERS,
   TIER_BY_ID,
   TIER_ORDER,
-  bite,
   catchTitle,
-  fight,
-  fightDc,
   kindIcon,
   pickKind,
   rangeText,
   scrollStats,
   tierFor,
-  type BaitId,
   type Catch,
   type CatchKind,
   type CatchWeights,
@@ -33,8 +28,8 @@ import { StatBlock } from "@/components/StatBlock";
 const LOG_KEY = "dnd-helper:fishing-log:v2";
 const SETTINGS_KEY = "dnd-helper:fishing-settings:v2";
 type LogEntry = { at: number; title: string; kind: CatchKind; tier: TierId; who: string };
-type Settings = { mode: "steps" | "quick"; dc: number; bait: BaitId; source: "catalog" | "ai"; heroId: number; weights: CatchWeights };
-const DEFAULTS: Settings = { mode: "steps", dc: 12, bait: "plain", source: "catalog", heroId: 0, weights: DEFAULT_WEIGHTS };
+type Settings = { source: "catalog" | "ai"; heroId: number; weights: CatchWeights };
+const DEFAULTS: Settings = { source: "catalog", heroId: 0, weights: DEFAULT_WEIGHTS };
 
 const d20 = () => 1 + Math.floor(Math.random() * 20);
 const num = (s: string) => (s.trim() === "" || s === "-" ? NaN : Number(s));
@@ -107,15 +102,9 @@ function CatchView({ c, onBattle, battleBusy }: { c: Catch; onBattle?: () => voi
 export function FishingTable({ initialStash, party, aiEnabled }: { initialStash: StashEntry[]; party: PartyMember[]; aiEnabled: boolean }) {
   const [cfg, setCfg] = useState<Settings>(DEFAULTS);
   const [showWeights, setShowWeights] = useState(false);
-  // Сцена
-  const [stage, setStage] = useState<"idle" | "fight" | "done">("idle");
-  const [nat, setNat] = useState("");
+  // Бросок
+  const [roll, setRoll] = useState("");
   const [bonus, setBonus] = useState("0");
-  const [hookTier, setHookTier] = useState<TierId>("trinket");
-  const [round, setRound] = useState(1);
-  const [maxRounds, setMaxRounds] = useState(3);
-  const [events, setEvents] = useState<string[]>([]);
-  const [quickTotal, setQuickTotal] = useState("");
   // Улов
   const [current, setCurrent] = useState<Catch | null>(null);
   const [busy, setBusy] = useState(false);
@@ -188,7 +177,6 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
     try {
       const c = await produce(tier, kind, undefined, value);
       setCurrent(c);
-      setStage("done");
       setNote("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось достать улов");
@@ -197,60 +185,15 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
     }
   }
 
-  function reset() {
-    setStage("idle");
-    setCurrent(null);
-    setEvents([]);
-    setNat("");
-    setError(null);
-  }
+  const reset = () => setCurrent(null);
 
-  // ---------- Шаги ----------
-  function doBite() {
+  /** Тянем: d20 + бонус → уровень улова по таблице. */
+  function pull(natural?: number) {
     setError(null);
-    const n = num(nat);
-    const b = num(bonus) || 0;
-    if (!Number.isFinite(n) || n < 1 || n > 20) return setError("Впишите, что выпало на d20 (1–20), или нажмите 🎲.");
-    const total = n + b;
-    const r = bite(n, total, cfg.dc, cfg.bait);
-    const head = `Поклёвка: ${n}${b ? ` ${b > 0 ? "+" : "−"} ${Math.abs(b)} = ${total}` : ""} против Сл ${cfg.dc}.`;
-    if (r.outcome === "creature") {
-      setEvents([head, n === 1 ? "Натуральная 1! Что-то огромное хватает наживку и тянет рыбака к воде…" : "Магическая приманка привлекла что-то голодное…"]);
-      void reveal("good", "creature");
-    } else if (r.outcome === "miss") {
-      setEvents([head, "Не клюёт… На крючке только мусор."]);
-      void reveal("junk", "junk");
-    } else {
-      setEvents([head, r.legendary ? "Натуральная 20 — ЛЕГЕНДАРНАЯ поклёвка! Удочка гнётся дугой." : "Клюёт! Леска натянулась."]);
-      setHookTier(r.tier);
-      setRound(1);
-      setMaxRounds(r.rounds);
-      setStage("fight");
-      setNat("");
-    }
-  }
-
-  function doFight() {
-    setError(null);
-    const n = num(nat);
-    const b = num(bonus) || 0;
-    if (!Number.isFinite(n) || n < 1 || n > 20) return setError("Впишите, что выпало на d20 (1–20), или нажмите 🎲.");
-    const dc = fightDc(cfg.dc, round);
-    const r = fight(hookTier, n, n + b, dc);
-    setEvents((e) => [...e, `Рывок ${round}: ${n + b} против Сл ${dc}. ${r.note}`]);
-    setHookTier(r.tier);
-    setNat("");
-    if (r.snapped || round >= maxRounds) {
-      if (!r.snapped) setEvents((e) => [...e, "Улов на берегу!"]);
-      void reveal(r.tier);
-    } else setRound(round + 1);
-  }
-
-  function doQuick() {
-    setError(null);
-    const v = num(quickTotal);
-    if (!Number.isFinite(v)) return setError("Впишите итог броска (d20 + бонус).");
-    setEvents([`Быстрый улов: ${v} → ${TIER_BY_ID[tierFor(v).id].title}`]);
+    const n = natural ?? num(roll);
+    if (!Number.isFinite(n)) return setError("Впишите, что выпало на d20, или нажмите 🎲.");
+    if (natural !== undefined) setRoll(String(natural));
+    const v = n + (num(bonus) || 0);
     void reveal(tierFor(v).id, undefined, v);
   }
 
@@ -300,7 +243,6 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
   }
 
   const matching = current ? stash.filter((s) => s.tier === current.tier && current.tier !== "junk") : [];
-  const fightDcNow = fightDc(cfg.dc, round);
   const inputCls = "input w-full text-center text-xl";
 
   return (
@@ -308,61 +250,46 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
       {/* ================= Слева: заброс ================= */}
       <div className="space-y-4">
         <section className="card space-y-3 p-4">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display text-2xl text-accent">🎣 Заброс</h2>
-            <div className="ml-auto flex overflow-hidden rounded-md border border-border text-xs">
-              {(
-                [
-                  ["steps", "Сцена"],
-                  ["quick", "Быстро"],
-                ] as const
-              ).map(([m, l]) => (
-                <button key={m} type="button" onClick={() => (save({ mode: m }), reset())} className={`px-2.5 py-1 ${cfg.mode === m ? "bg-panel-2 text-accent" : "text-muted hover:text-text"}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 text-sm">
+          <h2 className="font-display text-2xl text-accent">🎣 Заброс</h2>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
             <label className="block">
-              <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Кто ловит</span>
-              <select value={cfg.heroId} onChange={(e) => save({ heroId: Number(e.target.value) })} className="input w-full py-1 text-sm">
-                <option value={0}>— никто —</option>
-                {party.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              <span className="mb-1 block text-xs text-muted">d20</span>
+              <input
+                value={roll}
+                onChange={(e) => setRoll(e.target.value.replace(/[^\d-]/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && pull()}
+                inputMode="numeric"
+                className={inputCls}
+                placeholder="—"
+                autoFocus
+              />
             </label>
-            {cfg.mode === "steps" && (
-              <label className="block">
-                <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Сл ловли</span>
-                <input type="number" value={cfg.dc} min={5} max={30} onChange={(e) => save({ dc: Math.max(5, Math.min(30, Number(e.target.value) || 12)) })} className="input w-full py-1 text-center" />
-              </label>
-            )}
+            <span className="pb-2 text-xl text-muted">+</span>
+            <label className="block">
+              <span className="mb-1 block text-xs text-muted">бонус</span>
+              <input value={bonus} onChange={(e) => setBonus(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className={inputCls} title="Например, бонус Выживания или удочка получше" />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn btn-primary flex-1" disabled={busy} onClick={() => pull()}>
+              🪝 Тянуть
+            </button>
+            <button type="button" className="btn" disabled={busy} onClick={() => pull(d20())} title="Бросить d20 здесь и сразу тянуть">
+              🎲 d20
+            </button>
           </div>
 
-          {cfg.mode === "steps" && (
-            <div className="space-y-1">
-              <span className="block text-xs uppercase tracking-wide text-muted">Наживка</span>
-              <div className="grid grid-cols-3 gap-1">
-                {BAITS.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    title={b.hint}
-                    onClick={() => save({ bait: b.id })}
-                    className={`rounded-md border px-1 py-1.5 text-xs ${cfg.bait === b.id ? "border-accent bg-panel-2 text-accent" : "border-border text-muted hover:text-text"}`}
-                  >
-                    {b.icon} {b.label}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-muted">{BAITS.find((b) => b.id === cfg.bait)?.hint}</p>
-            </div>
-          )}
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs uppercase tracking-wide text-muted">Кто ловит</span>
+            <select value={cfg.heroId} onChange={(e) => save({ heroId: Number(e.target.value) })} className="input w-full py-1 text-sm">
+              <option value={0}>— никто —</option>
+              {party.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <div className="space-y-1">
             <span className="block text-xs uppercase tracking-wide text-muted">Откуда вещи и свитки</span>
@@ -407,95 +334,27 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
           )}
         </section>
 
-        {/* Шаги сцены */}
-        {cfg.mode === "steps" ? (
-          <section className="card space-y-3 p-4">
-            {stage === "idle" && (
-              <>
-                <h3 className="font-display text-lg">1. Поклёвка</h3>
-                <p className="text-xs text-muted">
-                  Проверка Мудрости (Выживание) против Сл {cfg.dc}. Чем больше запас — тем лучше то, что клюнуло. 20 — легендарная поклёвка, 1 — {cfg.bait === "magic" ? "1–3 — " : ""}из воды тянут рыбака.
-                </p>
-              </>
-            )}
-            {stage === "fight" && (
-              <>
-                <h3 className="font-display text-lg">
-                  2. Борьба — рывок {round} из {maxRounds}
-                </h3>
-                <div className="flex items-center gap-2 text-sm">
-                  На крючке: <TierBadge tier={hookTier} />
-                </div>
-                <p className="text-xs text-muted">Проверка Силы (Атлетика) против Сл {fightDcNow}. Успех — улов на ступень лучше, провал — леска рвётся (остаётся то, что есть).</p>
-              </>
-            )}
-            {stage !== "done" && (
-              <>
-                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-muted">d20</span>
-                    <input value={nat} onChange={(e) => setNat(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" className={inputCls} placeholder="—" />
-                  </label>
-                  <span className="pb-2 text-xl text-muted">+</span>
-                  <label className="block">
-                    <span className="mb-1 block text-xs text-muted">бонус</span>
-                    <input value={bonus} onChange={(e) => setBonus(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className={inputCls} />
-                  </label>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" className="btn" onClick={() => setNat(String(d20()))} title="Бросить d20 здесь">
-                    🎲
-                  </button>
-                  <button type="button" className="btn btn-primary flex-1" disabled={busy} onClick={stage === "fight" ? doFight : doBite}>
-                    {stage === "fight" ? "💪 Тянуть" : "🪝 Подсечь"}
-                  </button>
-                  {stage === "fight" && (
-                    <button type="button" className="btn" disabled={busy} onClick={() => void reveal(hookTier)} title="Не рисковать: вытащить то, что уже на крючке">
-                      Вытащить
+        {/* Таблица уровней */}
+        <section className="card p-3">
+          <table className="w-full text-sm">
+            <tbody>
+              {TIERS.map((t) => (
+                <tr key={t.id} className="border-t border-border first:border-t-0">
+                  <td className="w-14 py-1.5 font-mono text-muted">{rangeText(t)}</td>
+                  <td className={t.color.split(" ").slice(1).join(" ")}>
+                    {t.icon} {t.title}
+                    <div className="text-[11px] text-muted">{t.hint}</div>
+                  </td>
+                  <td className="text-right">
+                    <button type="button" className="text-muted hover:text-accent" disabled={busy} title="Вытянуть улов этого уровня без броска" onClick={() => void reveal(t.id)}>
+                      🎲
                     </button>
-                  )}
-                </div>
-              </>
-            )}
-            {stage === "done" && (
-              <button type="button" className="btn btn-primary w-full" onClick={reset}>
-                🎣 Новый заброс
-              </button>
-            )}
-            {events.length > 0 && (
-              <ol className="space-y-1 border-t border-border pt-2 text-xs text-muted">
-                {events.map((e, i) => (
-                  <li key={i}>• {e}</li>
-                ))}
-              </ol>
-            )}
-          </section>
-        ) : (
-          <section className="card space-y-3 p-4">
-            <p className="text-xs text-muted">Один бросок (d20 + бонус): чем выше, тем круче улов.</p>
-            <div className="flex gap-2">
-              <input value={quickTotal} onChange={(e) => setQuickTotal(e.target.value.replace(/[^\d-]/g, ""))} inputMode="numeric" className={inputCls} placeholder="итог" />
-              <button type="button" className="btn" onClick={() => setQuickTotal(String(d20()))}>
-                🎲
-              </button>
-            </div>
-            <button type="button" className="btn btn-primary w-full" disabled={busy} onClick={doQuick}>
-              🪝 Тянуть
-            </button>
-            <table className="w-full text-xs">
-              <tbody>
-                {TIERS.map((t) => (
-                  <tr key={t.id} className="border-t border-border">
-                    <td className="py-1 font-mono">{rangeText(t)}</td>
-                    <td className={t.color.split(" ").slice(1).join(" ")}>
-                      {t.icon} {t.title}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
       </div>
 
       {/* ================= Центр: улов ================= */}
@@ -552,14 +411,8 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
         ) : (
           !busy && (
             <div className="card p-8 text-center text-sm text-muted">
-              {cfg.mode === "steps" ? (
-                <>
-                  Сцена рыбалки: <b>поклёвка</b> (Мудрость/Выживание) решает, что клюнуло, затем до {3} рывков <b>борьбы</b> (Сила/Атлетика) — каждый успех делает улов лучше, провал рвёт леску. На
-                  крючке может оказаться предмет, свиток, сокровище, зацепка для сюжета или водное существо.
-                </>
-              ) : (
-                "Впишите итог броска и нажмите «Тянуть»."
-              )}
+              Впишите, что выпало на d20 (и бонус), и нажмите «Тянуть» — чем выше итог, тем круче улов. На крючке может оказаться предмет, свиток, сокровище, зацепка для
+              сюжета или водное существо.
             </div>
           )
         )}
@@ -634,7 +487,7 @@ export function FishingTable({ initialStash, party, aiEnabled }: { initialStash:
                   .map((s) => (
                     <li key={s.id} className="group border-b border-border px-3 py-2 text-sm">
                       <div className="flex items-center gap-2">
-                        <button type="button" className="min-w-0 flex-1 truncate text-left hover:text-accent" onClick={() => (setCurrent(s.catch), setStage("done"))} title="Показать карточку">
+                        <button type="button" className="min-w-0 flex-1 truncate text-left hover:text-accent" onClick={() => setCurrent(s.catch)} title="Показать карточку">
                           {kindIcon(s.catch.kind)} {catchTitle(s.catch)}
                         </button>
                         <button type="button" className="text-muted opacity-0 hover:text-red-400 group-hover:opacity-100" onClick={async () => setStash(await removeStash(s.id))} title="Убрать">
