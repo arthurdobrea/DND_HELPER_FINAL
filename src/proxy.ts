@@ -1,7 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { AUTH_COOKIE, isAuthorized } from "@/lib/auth";
+import { CORS_HEADERS, SYNC_KEY_HEADER } from "@/lib/sync-cors";
 
 export function proxy(request: NextRequest) {
+  // Обмен с приложением игрока (DnD Tracker): CORS и ключ в заголовке x-dnd-key, cookie тоже годится.
+  if (request.nextUrl.pathname.startsWith("/api/sync/")) {
+    if (request.method === "OPTIONS") return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+    const key = request.headers.get(SYNC_KEY_HEADER) ?? request.cookies.get(AUTH_COOKIE)?.value;
+    if (!isAuthorized(key)) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: CORS_HEADERS });
+    return NextResponse.next();
+  }
+
   if (isAuthorized(request.cookies.get(AUTH_COOKIE)?.value)) return NextResponse.next();
 
   if (request.nextUrl.pathname.startsWith("/api/")) {
