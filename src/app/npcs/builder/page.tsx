@@ -24,9 +24,6 @@ export default async function BuilderPage({ searchParams }: { searchParams: Prom
         </Link>
         <h1 className="font-display text-2xl text-accent">🧩 {loaded ? `Сборка: ${loaded.draft.name || "NPC"}` : "Сборщик NPC"}</h1>
         <span className="hidden text-sm text-muted md:inline">каталог слева → перетащите блоки в схему существа</span>
-        <Link href={loaded ? `/npcs/forge?edit=${loaded.editId}` : "/npcs/forge"} className="btn ml-auto text-sm" title="Тот же NPC в обычной форме со списками">
-          🛠️ Обычный конструктор
-        </Link>
       </div>
       <NpcBuilder key={loaded?.editId ?? "new"} initial={loaded?.draft} editId={loaded?.editId} />
     </div>

@@ -163,6 +163,24 @@ export async function aiHistory(): Promise<AiCreation[]> {
     .filter((c): c is AiCreation => !!c && c.name !== "…");
 }
 
+/** Сохранить ручные правки варианта («редактировать как текст»). Данные заново проходят проверку, как и ответ Gemini. */
+export async function aiUpdate(id: number, entity: AiEntity): Promise<{ ok: true; item: AiCreation } | { ok: false; error: string }> {
+  const world = await requireWorld();
+  const row = getDb()
+    .select()
+    .from(schema.aiCreations)
+    .where(and(eq(schema.aiCreations.id, Number(id)), eq(schema.aiCreations.worldId, world.id)))
+    .get();
+  if (!row) return { ok: false, error: "Запись не найдена" };
+  const e = (entity ?? {}) as Partial<AiEntity>;
+  if (e.kind !== row.kind) return { ok: false, error: "Тип записи не совпадает" };
+  const clean: AiEntity =
+    e.kind === "monster" ? { kind: "monster", draft: sanitizeMonster((e as { draft?: unknown }).draft) } : e.kind === "spell" ? { kind: "spell", spell: sanitizeSpell((e as { spell?: unknown }).spell, `ai:${row.id}`) } : { kind: "item", item: sanitizeItem((e as { item?: unknown }).item, `ai:${row.id}`) };
+  const name = entityName(clean).slice(0, 100);
+  getDb().update(schema.aiCreations).set({ name, data: JSON.stringify(clean) }).where(eq(schema.aiCreations.id, row.id)).run();
+  return { ok: true, item: { id: row.id, kind: row.kind, name, prompt: row.prompt, starred: row.starred, createdAt: row.createdAt.getTime(), entity: clean } };
+}
+
 export async function aiStar(id: number, starred: boolean): Promise<void> {
   const world = await requireWorld();
   getDb()

@@ -56,10 +56,7 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
     <div>
       <CharacterLocations characterId={row.id} />
       <div className="mx-auto mt-3 w-full max-w-3xl px-4">
-        <Link href={`/npcs/forge?edit=${row.id}`} className="btn px-2.5 py-1 text-xs" title="Изменить характеристики, способности и заклинания в конструкторе">
-          ✏️ Править в конструкторе
-        </Link>
-        <Link href={`/npcs/builder?edit=${row.id}`} className="btn ml-2 px-2.5 py-1 text-xs" title="Править блоками: перетаскивание, замена способностей">
+        <Link href={`/npcs/builder?edit=${row.id}`} className="btn px-2.5 py-1 text-xs" title="Править блоками: перетаскивание, замена способностей">
           🧩 Править в сборщике
         </Link>
         {row.monsterKey && (
@@ -77,7 +74,7 @@ export default async function NpcPage({ params }: PageProps<"/npcs/[id]">) {
       {raw && statblock && (
         <details className="mx-auto mt-3 w-full max-w-3xl px-4">
           <summary className="cursor-pointer text-sm text-muted hover:text-accent">
-            {isCustomKey(row.monsterKey) ? "Статблок из конструктора" : "Основа из бестиария"}: {raw.name} (CR {raw.challenge_rating}) — показать исходный статблок
+            {isCustomKey(row.monsterKey) ? "Статблок из сборщика" : "Основа из бестиария"}: {raw.name} (CR {raw.challenge_rating}) — показать исходный статблок
           </summary>
           <div className="mt-2 flex flex-col gap-2">
             <StatBlock m={statblock} lang="ru" />

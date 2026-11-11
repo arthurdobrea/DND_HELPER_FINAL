@@ -22,7 +22,7 @@ export async function createForgedNpc(input: ForgeDraft): Promise<void> {
 
   const monster = buildMonster(draft);
   const sheet = monsterToSheet(monster, { name: draft.name, backstory: draft.backstory, motivation: draft.motivation }, spellcastingOf(draft));
-  sheet.background = "Создан в конструкторе";
+  sheet.background = "Создан в сборщике";
   const now = new Date();
   const db = getDb();
   const mon = db

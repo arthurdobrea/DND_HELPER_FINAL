@@ -347,7 +347,7 @@ export type StoryNote = typeof storyNotes.$inferSelect;
 export type ShopItem = typeof shopItems.$inferSelect;
 
 /**
- * Монстры, собранные в конструкторе NPC (/npcs/forge). data — статблок в формате каталога (Monster),
+ * Монстры, собранные в конструкторе NPC (/npcs/builder). data — статблок в формате каталога (Monster),
  * draft — исходный черновик конструктора (для повторного редактирования). Ключ в характеристиках: «custom:<id>».
  */
 export const customMonsters = sqliteTable("custom_monsters", {

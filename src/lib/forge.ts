@@ -200,6 +200,14 @@ function spellText(d: ForgeDraft, a: SpellAbility): string {
   return lines.join("\n");
 }
 
+/** Название и текст способности так, как они попадут в статблок (для редактирования «как текст»). */
+export function abilityView(d: ForgeDraft, a: ForgeAbility): { name: string; desc: string } {
+  if (a.kind === "text") return { name: a.name, desc: a.desc };
+  if (a.kind === "attack") return { name: nameWithUsage(a.name, a.usage), desc: attackText(d, a) };
+  if (a.kind === "save") return { name: nameWithUsage(a.name, a.usage), desc: saveText(d, a) };
+  return { name: "Использование заклинаний", desc: spellText(d, a) };
+}
+
 const NUM_WORDS: [string, number][] = [
   ["one", 1], ["two", 2], ["three", 3], ["four", 4], ["five", 5], ["six", 6],
   ["одну", 1], ["один", 1], ["две", 2], ["два", 2], ["три", 3], ["четыре", 4], ["пять", 5], ["шесть", 6],

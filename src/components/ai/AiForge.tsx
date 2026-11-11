@@ -2,10 +2,11 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { aiDelete, aiGenerate, aiHistory, aiItemToShop, aiRefine, aiStar, type AiResult } from "@/app/ai-forge-actions";
+import { aiDelete, aiGenerate, aiHistory, aiItemToShop, aiRefine, aiStar, aiUpdate, type AiResult } from "@/app/ai-forge-actions";
 import { createForgedNpc } from "@/app/forge-actions";
 import { stashCatch } from "@/app/fishing-actions";
-import { AI_KINDS, defaultOptions, entitySubtitle, fishingTierOf, type AiCreation, type AiKind, type AiOptions, type AiQuality } from "@/lib/ai-forge";
+import { AI_KINDS, defaultOptions, entitySubtitle, fishingTierOf, type AiCreation, type AiEntity, type AiKind, type AiOptions, type AiQuality } from "@/lib/ai-forge";
+import { ItemFields, MonsterFields, SpellFields, applyRows, rowsFromDraft, type AbilityRow } from "@/components/ai/AiEditor";
 import { CLASSES, ITEM_CATEGORIES, MONSTER_TYPES, RARITIES, SCHOOLS, SIZES } from "@/lib/catalog/labels";
 import { CR_LIST, crText, estimateCr } from "@/lib/cr";
 import { buildMonster, type ForgeDraft } from "@/lib/forge";
@@ -13,7 +14,7 @@ import { TIER_BY_ID } from "@/lib/fishing";
 import { StatBlock } from "@/components/StatBlock";
 import { SpellCard } from "@/components/SpellCard";
 import { ItemCard } from "@/components/ItemCard";
-import { STORE_KEY } from "@/components/npc/NpcForge";
+import { STORE_KEY } from "@/components/npc/NpcParts";
 
 const PLACEHOLDER: Record<AiKind, string> = {
   monster: "Болотная ведьма-утопленница для группы 5 уровня. Тянет героев под воду, насылает гниль, боится огня…",
@@ -52,6 +53,10 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Правка «как текст»: рабочая копия сущности и (для монстра) строки способностей
+  const [editing, setEditing] = useState<AiEntity | null>(null);
+  const [rows, setRows] = useState<AbilityRow[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const set = (p: Partial<AiOptions>) => setOpts((o) => ({ ...o, ...p }));
   const say = (msg: string) => {
@@ -71,7 +76,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
       }
       if (mode === "gen") setVariants(res.items);
       else setVariants((v) => [...res.items, ...v].slice(0, 6));
-      setCurrent(res.items[0] ?? null);
+      open(res.items[0] ?? null);
       if (mode === "refine") setRefine("");
       setHistory((h) => [...res.items, ...h]);
     } catch (e) {
@@ -85,6 +90,45 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
   const doRefine = (text = refine) => {
     if (current && text.trim()) void run(() => aiRefine({ id: current.id, instruction: text, quality }), "refine");
   };
+
+  function startEdit() {
+    if (!current) return;
+    setEditing(structuredClone(current.entity));
+    setRows(current.entity.kind === "monster" ? rowsFromDraft(current.entity.draft) : []);
+    setError(null);
+  }
+  const stopEdit = () => {
+    setEditing(null);
+    setRows([]);
+  };
+  const open = (c: AiCreation | null) => {
+    stopEdit();
+    setCurrent(c);
+  };
+
+  async function saveEdit() {
+    if (!current || !editing) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const entity: AiEntity = editing.kind === "monster" ? { kind: "monster", draft: applyRows(editing.draft, rows) } : editing;
+      const res = await aiUpdate(current.id, entity);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      const upd = (x: AiCreation) => (x.id === res.item.id ? res.item : x);
+      setHistory((h) => h.map(upd));
+      setVariants((v) => v.map(upd));
+      setCurrent(res.item);
+      stopEdit();
+      say("Правки сохранены");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить правки");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function toggleStar(c: AiCreation) {
     const next = !c.starred;
@@ -100,7 +144,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
     await aiDelete(c.id);
     setHistory((h) => h.filter((x) => x.id !== c.id));
     setVariants((v) => v.filter((x) => x.id !== c.id));
-    if (current?.id === c.id) setCurrent(null);
+    if (current?.id === c.id) open(null);
   }
 
   function toBuilder(d: ForgeDraft) {
@@ -315,7 +359,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
               <button
                 key={v.id}
                 type="button"
-                onClick={() => setCurrent(v)}
+                onClick={() => open(v)}
                 className={`rounded-md border px-3 py-1 text-sm ${current?.id === v.id ? "border-accent bg-panel-2 text-accent" : "border-border text-muted hover:text-text"}`}
               >
                 {i + 1}. {v.name}
@@ -329,10 +373,26 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
         {current ? (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
             <div className={`min-w-0 space-y-2 ${busy ? "opacity-60" : ""}`}>
-              {monster && <StatBlock m={monster} lang="ru" />}
-              {current.entity.kind === "spell" && <SpellCard s={current.entity.spell} />}
-              {current.entity.kind === "item" && <ItemCard i={current.entity.item} />}
-              {draft && est && (
+              {editing && (
+                <div className="card space-y-3 p-4">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+                    <span className="font-display text-lg text-accent">✏️ Правка текста</span>
+                    <button type="button" className="btn btn-primary ml-auto px-4" disabled={saving} onClick={() => void saveEdit()}>
+                      {saving ? "Сохраняю…" : "💾 Сохранить"}
+                    </button>
+                    <button type="button" className="btn" disabled={saving} onClick={stopEdit}>
+                      Отмена
+                    </button>
+                  </div>
+                  {editing.kind === "monster" && <MonsterFields d={editing.draft} rows={rows} onDraft={(d) => setEditing({ kind: "monster", draft: d })} onRows={setRows} />}
+                  {editing.kind === "spell" && <SpellFields s={editing.spell} onChange={(s) => setEditing({ kind: "spell", spell: s })} />}
+                  {editing.kind === "item" && <ItemFields i={editing.item} onChange={(i) => setEditing({ kind: "item", item: i })} />}
+                </div>
+              )}
+              {!editing && monster && <StatBlock m={monster} lang="ru" />}
+              {!editing && current.entity.kind === "spell" && <SpellCard s={current.entity.spell} />}
+              {!editing && current.entity.kind === "item" && <ItemCard i={current.entity.item} />}
+              {!editing && draft && est && (
                 <p className={`rounded-md border p-2 text-xs ${Math.abs(crGap) <= 1 ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-amber-500/40 bg-amber-500/10 text-amber-200"}`}>
                   Расчётный CR по таблице мастера ≈ <b>{crText(est.cr)}</b> (защита {crText(est.defCr)}, атака {crText(est.offCr)}, урон ≈ {Math.round(est.dpr)} за раунд) при заявленном{" "}
                   <b>{crText(draft.cr)}</b>.
@@ -340,7 +400,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
                   оценку не входят.
                 </p>
               )}
-              {draft && (draft.motivation || draft.backstory) && (
+              {!editing && draft && (draft.motivation || draft.backstory) && (
                 <div className="card space-y-1 p-3 text-sm">
                   {draft.motivation && (
                     <p>
@@ -360,6 +420,9 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
             <div className="space-y-2">
               <button type="button" className="btn w-full" disabled={!!busy} onClick={() => void generate()} title="Ещё раз по тому же описанию и параметрам">
                 🔄 Другой вариант
+              </button>
+              <button type="button" className={`btn w-full ${editing ? "border-accent text-accent" : ""}`} disabled={!!busy || saving} onClick={() => (editing ? stopEdit() : startEdit())} title="Править всё вручную: поля и текст способностей, без сборщика">
+                {editing ? "✕ Закрыть правку" : "📝 Править текст"}
               </button>
               <div className="card space-y-2 p-2">
                 <textarea
@@ -457,7 +520,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
                 type="button"
                 className="min-w-0 flex-1 text-left"
                 onClick={() => {
-                  setCurrent(c);
+                  open(c);
                   setKind(c.kind);
                   setVariants((v) => (v.some((x) => x.id === c.id) ? v : []));
                 }}

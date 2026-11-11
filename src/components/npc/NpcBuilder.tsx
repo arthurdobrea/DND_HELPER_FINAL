@@ -43,7 +43,7 @@ import {
   useDebounced,
   type AbilityHit,
   type SpellHit,
-} from "@/components/npc/NpcForge";
+} from "@/components/npc/NpcParts";
 
 // ---------- Дорожки и цвета ----------
 
@@ -311,7 +311,7 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
   const [pending, start] = useTransition();
   const loaded = useRef(false);
 
-  // Тот же черновик, что и в обычном конструкторе (если не правим готового NPC).
+  // Черновик сборщика (общий с ИИ-кузницей) (если не правим готового NPC).
   useEffect(() => {
     if (editId) {
       loaded.current = true;
@@ -964,7 +964,7 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
         <p className="text-xs text-muted">
           {editId
             ? "Пересчитаются характеристики, атаки, особенности и заклинания листа; снаряжение, монеты и заметки останутся."
-            : "Черновик общий с обычным конструктором и хранится в браузере до создания."}
+            : "Черновик хранится в браузере до создания."}
         </p>
       </aside>
     </div>

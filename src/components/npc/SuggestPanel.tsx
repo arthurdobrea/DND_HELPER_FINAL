@@ -5,7 +5,7 @@ import { crText } from "@/lib/cr";
 import { SECTION_LABEL, type ForgeDraft, type Section } from "@/lib/forge";
 import { TEMPLATES, type Template } from "@/lib/forge-templates";
 import { TAG_BY_ID, abilityTags, scoreTags, topTags, type Profile, type TagId } from "@/lib/suggest";
-import type { AbilityHit, SpellHit } from "@/components/npc/NpcForge";
+import type { AbilityHit, SpellHit } from "@/components/npc/NpcParts";
 
 type SuggestAbility = AbilityHit & { tags: TagId[]; count: number; sameType: boolean };
 type SuggestSpell = SpellHit & { tags: TagId[] };
