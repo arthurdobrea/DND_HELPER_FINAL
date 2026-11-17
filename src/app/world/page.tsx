@@ -22,8 +22,11 @@ import { hrefWith } from "@/lib/url";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
 import { getCurrentWorld } from "@/lib/world";
+import { findPc } from "@/lib/sync";
+import { normalizeSheet } from "@/lib/character";
+import { HeroCard } from "@/components/character/HeroCard";
 
-const KIND_ORDER = { page: 0, spell: 1, item: 2, monster: 3 } as const;
+const KIND_ORDER = { page: 0, spell: 1, item: 2, monster: 3, hero: 4 } as const;
 
 function parse<T>(e: WorldEntry): T | null {
   return e.data ? (JSON.parse(e.data) as T) : null;
@@ -44,6 +47,11 @@ function subtitle(e: WorldEntry, bookTitles: Map<number, string>): string {
     case "monster": {
       const m = parse<Monster>(e);
       return m ? `CR ${m.challenge_rating} · ${m.type}` : "";
+    }
+    case "hero": {
+      const pc = findPc(Number(e.ref));
+      const s = pc && normalizeSheet(JSON.parse(pc.data));
+      return s ? [s.race, s.className, `ур. ${s.level}`].filter(Boolean).join(" · ") : "героя больше нет";
     }
   }
 }
@@ -132,13 +140,17 @@ export default async function WorldPage({ searchParams }: PageProps<"/world">) {
         const loc = i && localize("item", i, lang);
         if (loc) ({ missing, enabled } = loc);
         card = loc && <ItemCard i={loc.entry} />;
+      } else if (selected.kind === "hero") {
+        // Живая карточка героя из базы, а не копия: хиты и бабл связи всегда свежие.
+        const pc = findPc(Number(selected.ref));
+        card = pc && <HeroCard id={pc.id} s={normalizeSheet(JSON.parse(pc.data))} pinned />;
       } else {
         const m = parse<Monster>(selected);
         const loc = m && localize("monster", m, lang);
         if (loc) ({ missing, enabled } = loc);
         card = loc && <StatBlock m={loc.entry} lang={lang} />;
       }
-      const bar = card && (
+      const bar = card && selected.kind !== "hero" && (
         <TranslationBar
           lang={lang}
           hrefRu={hrefWith("/world", sp, { lang: null })}

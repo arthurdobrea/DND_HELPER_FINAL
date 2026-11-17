@@ -46,6 +46,8 @@ export type CharacterSheet = {
   level: number;
   background: string;
   playerName: string;
+  /** Тема оформления в приложении игрока (имя из player-themes.ts); приходит вместе с листом. */
+  theme?: string;
   race: string;
   alignment: string;
   xp: number;

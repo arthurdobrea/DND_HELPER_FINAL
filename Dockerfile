@@ -27,5 +27,5 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
 VOLUME /data
-EXPOSE 3000
+EXPOSE 3000 3001
 CMD ["node", "server.js"]

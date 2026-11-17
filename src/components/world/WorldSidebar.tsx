@@ -24,6 +24,7 @@ export const KIND_META: Record<EntryKind, { icon: string; label: string; add: st
   spell: { icon: "✨", label: "Заклинания", add: "/spells" },
   item: { icon: "🗡️", label: "Предметы", add: "/items" },
   monster: { icon: "🐲", label: "Монстры", add: "/monsters" },
+  hero: { icon: "🦸", label: "Герои", add: "/heroes" },
 };
 const KINDS = Object.keys(KIND_META) as EntryKind[];
 

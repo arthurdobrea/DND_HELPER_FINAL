@@ -8,6 +8,7 @@ import { getMonsters } from "@/lib/catalog";
 import { initiative, normalizeSheet } from "@/lib/character";
 import { emptyBattle, sanitizeBattle } from "@/lib/battle";
 import { pageMeta } from "@/lib/meta";
+import { appHeroes } from "@/lib/heroes";
 import { BattleTracker, type PartyEntry } from "@/components/battle/BattleTracker";
 
 export const metadata: Metadata = pageMeta("Бой", "🛡️");
@@ -55,6 +56,7 @@ export default async function BattlePage() {
       initial={initial}
       heroes={chars.filter((c) => c.kind === "pc").map(toEntry)}
       npcs={chars.filter((c) => c.kind === "npc").map(toEntry)}
+      appHeroes={appHeroes(world.id)}
     />
   );
 }

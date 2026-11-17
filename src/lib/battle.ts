@@ -1,7 +1,8 @@
 /** Трекер боя: модель состояния и чистые операции над ним (без серверных зависимостей). */
 
 export type Coins = { cp: number; sp: number; ep: number; gp: number; pp: number };
-export type LootItem = { key: string; name: string; rarity: string | null; price: number | null };
+/** givenTo — имя героя, которому мастер уже отдал вещь (не выдать дважды). */
+export type LootItem = { key: string; name: string; rarity: string | null; price: number | null; givenTo?: string };
 /** Добыча с поверженного монстра: монеты, вещи из каталога и трофеи (части тела, мелочи). */
 export type Loot = { coins: Coins; items: LootItem[]; trophies: string[] };
 
@@ -148,6 +149,7 @@ export function sanitizeBattle(raw: unknown): Battle {
               name: str(i.name, 120),
               rarity: i.rarity ? str(i.rarity, 20) : null,
               price: typeof i.price === "number" ? i.price : null,
+              ...(i.givenTo ? { givenTo: str(i.givenTo, 120) } : {}),
             })),
             trophies: (Array.isArray(c.loot.trophies) ? c.loot.trophies : []).slice(0, 10).map((t) => str(t, 120)),
           }

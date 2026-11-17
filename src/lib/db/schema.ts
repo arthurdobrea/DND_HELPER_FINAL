@@ -18,7 +18,7 @@ export const books = sqliteTable("books", {
   createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 });
 
-export const ENTRY_KINDS = ["page", "spell", "item", "monster"] as const;
+export const ENTRY_KINDS = ["page", "spell", "item", "monster", "hero"] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
 
 /** Встроенные категории закладок; пустая строка — без категории. См. lib/groups.ts. */
