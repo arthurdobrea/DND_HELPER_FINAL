@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 import { logout } from "@/app/actions";
 
 const LINKS = [
+  { href: "/heroes", label: "🦸 Герои" },
   { href: "/characters", label: "🧙 Персонажи" },
   { href: "/monsters", label: "🐲 Монстры" },
   { href: "/npcs", label: "🎭 NPC" },
@@ -20,6 +21,7 @@ const LINKS = [
   { href: "/maps", label: "🗺️ Карты" },
   { href: "/books", label: "📚 Книги" },
   { href: "/parser", label: "🔍 Парсер" },
+  { href: "/connect", label: "📱 Подключение" },
 ];
 
 export function NavBar({ worldName }: { worldName?: string }) {

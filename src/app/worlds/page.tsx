@@ -7,7 +7,7 @@ import { WorldActions } from "@/components/WorldActions";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
 
-const KIND_LABELS = { page: "📖", spell: "✨", item: "🗡️", monster: "🐲" } as const;
+const KIND_LABELS = { page: "📖", spell: "✨", item: "🗡️", monster: "🐲", hero: "🦸" } as const;
 
 export const metadata: Metadata = pageMeta("Миры", "🐉");
 

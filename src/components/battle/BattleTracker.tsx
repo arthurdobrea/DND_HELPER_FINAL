@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { clearBattle, rollBattleLoot, saveBattle, syncBattleHp } from "@/app/actions";
+import { GiveItemMenu } from "@/components/character/GiveItem";
+import type { HeroPick } from "@/lib/heroes";
 import { MONSTER_TYPES, RARITIES, RARITY_COLORS, label } from "@/lib/catalog/labels";
 import {
   CONDITIONS,
@@ -453,7 +455,7 @@ function AddPanel({
 
 // ---------- Трекер ----------
 
-export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; heroes: PartyEntry[]; npcs: PartyEntry[] }) {
+export function BattleTracker({ initial, heroes, npcs, appHeroes = [] }: { initial: Battle; heroes: PartyEntry[]; npcs: PartyEntry[]; appHeroes?: HeroPick[] }) {
   const [battle, setBattle] = useState(initial);
   const [saved, setSaved] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -705,15 +707,25 @@ export function BattleTracker({ initial, heroes, npcs }: { initial: Battle; hero
             {c.loot ? (
               <ul className="mt-2 space-y-1 text-sm">
                 <li>🪙 {coinsText(c.loot.coins)}</li>
-                {c.loot.items.map((i) => (
-                  <li key={i.key}>
+                {c.loot.items.map((i, idx) => (
+                  <li key={`${i.key}-${idx}`}>
                     <Link href={`/items?open=${encodeURIComponent(i.key)}`} target="_blank" className={`hover:underline ${i.rarity ? RARITY_COLORS[i.rarity] : ""}`}>
                       🎁 {i.name}
                     </Link>
                     <span className="text-xs text-muted">
                       {i.rarity ? ` · ${label(RARITIES, i.rarity).toLowerCase()}` : ""}
                       {i.price ? ` · ≈${i.price} зм` : ""}
-                    </span>
+                    </span>{" "}
+                    {i.givenTo ? (
+                      <span className="text-xs text-green-400">отдано: {i.givenTo} ✓</span>
+                    ) : (
+                      <GiveItemMenu
+                        itemKey={i.key}
+                        heroes={appHeroes}
+                        label="🎁"
+                        onGiven={(h) => update((b) => ({ ...b, combatants: b.combatants.map((x) => (x.id === c.id && x.loot ? { ...x, loot: { ...x.loot, items: x.loot.items.map((y, n) => (n === idx ? { ...y, givenTo: h.name } : y)) } } : x)) }))}
+                      />
+                    )}
                   </li>
                 ))}
                 {c.loot.trophies.map((t) => (

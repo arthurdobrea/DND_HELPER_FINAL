@@ -28,6 +28,9 @@ import { getItems, getMonsterRaw, getMonsters, getSpells } from "@/lib/catalog";
 import { isCustomKey } from "@/lib/custom-monsters";
 import { resync, type CatalogKind } from "@/lib/catalog/store";
 import { WORLD_COOKIE, findEntry, requireWorld } from "@/lib/world";
+import { findPc } from "@/lib/sync";
+import { addGift, customGift, giftFromItem } from "@/lib/gifts";
+import { notifyBattle, notifyHero } from "@/lib/live";
 import { applyDamage, applyHeal, emptySheet, initiative, normalizeSheet, type CharacterSheet } from "@/lib/character";
 import { emptyBattle, sanitizeBattle, uid, type Battle, type Combatant, type Loot } from "@/lib/battle";
 import { rollLoot as rollMonsterLoot } from "@/lib/battle-loot";
@@ -104,6 +107,12 @@ async function loadSnapshot(kind: RefKind, ref: string): Promise<{ title: string
     const m = (await getMonsterRaw(ref).catch(() => undefined)) ?? (await getMonster(ref));
     if (!m) throw new Error("Монстр не найден");
     return { title: m.name, data: m };
+  }
+  if (kind === "hero") {
+    // Герой — живая ссылка на лист: данные берём из базы при показе, копию не храним.
+    const pc = findPc(Number(ref));
+    if (!pc) throw new Error("Герой не найден");
+    return { title: pc.name, data: null };
   }
   const list = kind === "spell" ? await getSpells() : await getItems();
   const e = list.find((x) => x.key === ref);
@@ -428,6 +437,7 @@ export async function saveCharacter(id: number, sheet: CharacterSheet) {
     .set({ name: clean.name.trim() || "Без имени", data: JSON.stringify(clean), updatedAt: new Date() })
     .where(characterWhere(id, world.id))
     .run();
+  notifyHero(id);
   revalidatePath("/characters");
 }
 
@@ -443,6 +453,7 @@ export async function adjustCharacterHp(id: number, delta: number) {
     .set({ data: JSON.stringify(next), updatedAt: new Date() })
     .where(characterWhere(id, world.id))
     .run();
+  notifyHero(id);
   revalidatePath("/characters");
 }
 
@@ -588,11 +599,13 @@ export async function saveBattle(state: Battle) {
     .values({ worldId: world.id, state: JSON.stringify(clean), updatedAt: new Date() })
     .onConflictDoUpdate({ target: schema.battles.worldId, set: { state: JSON.stringify(clean), updatedAt: new Date() } })
     .run();
+  notifyBattle();
 }
 
 export async function clearBattle() {
   const world = await requireWorld();
   getDb().delete(schema.battles).where(eq(schema.battles.worldId, world.id)).run();
+  notifyBattle();
   revalidatePath("/battle");
 }
 
@@ -678,6 +691,7 @@ export async function syncBattleHp(entries: { sheetId: number; hp: number }[]) {
     const sheet = normalizeSheet(JSON.parse(row.data));
     sheet.hpCurrent = Math.max(0, Math.min(sheet.hpMax, Math.round(Number(e.hp) || 0)));
     db.update(schema.characters).set({ data: JSON.stringify(sheet), updatedAt: new Date() }).where(characterWhere(row.id, world.id)).run();
+    notifyHero(row.id);
   }
   revalidatePath("/characters");
   revalidatePath("/npcs");
@@ -853,4 +867,55 @@ export async function deleteBook(id: number) {
   db.delete(schema.books).where(eq(schema.books.id, id)).run();
   await fs.rm(path.join(PDF_DIR, book.fileName), { force: true });
   revalidateEntries();
+}
+
+// ---------- Вещи героям из приложения игрока ----------
+
+export type GiveInput = { key?: string; name?: string; desc?: string; qty?: number; weight?: number; price?: number };
+
+/** Мастер даёт вещь герою: из каталога (key) или свою (name). Приложение заберёт её при следующем опросе. Ошибка — текст. */
+export async function giveItem(heroId: number, input: GiveInput): Promise<string | null> {
+  const world = await requireWorld();
+  const pc = findPc(Number(heroId));
+  if (!pc || pc.worldId !== world.id) return "Герой не найден";
+  const qty = Math.max(1, Math.min(999, Math.floor(Number(input.qty) || 1)));
+  if (input.key) {
+    const item = (await getItems()).find((i) => i.key === input.key);
+    if (!item) return "Вещи нет в каталоге";
+    if (!addGift(pc.id, giftFromItem(localize("item", item, "ru").entry, qty))) return "У героя уже много неполученных вещей: пусть подключится";
+  } else {
+    const name = String(input.name ?? "").trim().slice(0, 120);
+    if (!name) return "Нужно название";
+    if (!addGift(pc.id, customGift(name, qty, String(input.desc ?? "").trim().slice(0, 4000), Math.max(0, Number(input.weight) || 0), Number(input.price) || 0))) return "У героя уже много неполученных вещей: пусть подключится";
+  }
+  notifyHero(pc.id);
+  revalidatePath("/heroes");
+  return null;
+}
+
+// Индекс имён каталога (русские, если переведены, и английские): строится раз в минуту, а не на каждую букву поиска.
+let giftIdx: { at: number; rows: { key: string; name: string; rarity: string | null; hay: string }[] } | null = null;
+async function giftIndex() {
+  if (giftIdx && Date.now() - giftIdx.at < 60_000) return giftIdx.rows;
+  const items = await getItems();
+  const ru = lookupCached(items.map((i) => i.name));
+  const rows = items.map((i) => {
+    const name = ru.get(i.name) ?? i.name;
+    return { key: i.key, name, rarity: i.rarity, hay: `${name} ${i.name}`.toLowerCase() };
+  });
+  giftIdx = { at: Date.now(), rows };
+  return rows;
+}
+
+/** Поиск вещи в каталоге для «Дать вещь»: до 12 совпадений по имени (русскому, если переведено). */
+export async function findCatalogItems(q: string): Promise<{ key: string; name: string; rarity: string | null }[]> {
+  await requireWorld();
+  const s = String(q ?? "").trim().toLowerCase();
+  if (s.length < 2) return [];
+  const out: { key: string; name: string; rarity: string | null }[] = [];
+  for (const r of await giftIndex()) {
+    if (r.hay.includes(s)) out.push({ key: r.key, name: r.name, rarity: r.rarity });
+    if (out.length >= 12) break;
+  }
+  return out;
 }

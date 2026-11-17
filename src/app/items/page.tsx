@@ -15,6 +15,8 @@ import { TranslationBar } from "@/components/translate/TranslationBar";
 import { localize, parseLang } from "@/lib/translate/view";
 import { NotesEditor } from "@/components/NotesEditor";
 import { PinButton } from "@/components/PinButton";
+import { GiveItemMenu } from "@/components/character/GiveItem";
+import { appHeroes } from "@/lib/heroes";
 import type { Metadata } from "next";
 import { pageMeta } from "@/lib/meta";
 
@@ -184,6 +186,7 @@ export default async function ItemsPage({ searchParams }: PageProps<"/items">) {
         enabled={loc.enabled}
       />
       <ItemCard i={loc.entry} />
+      <GiveItemMenu itemKey={open.key} heroes={appHeroes(world.id)} />
       <PinButton pinned={pinned.has(open.key)} toggle={toggleEntry.bind(null, "item", open.key)} />
       {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>

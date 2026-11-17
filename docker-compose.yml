@@ -4,9 +4,13 @@ services:
     container_name: dnd-helper
     ports:
       - "3000:3000"
+      # WebSocket живой связи (src/lib/live.ts)
+      - "3001:3001"
     environment:
       # Ключ для входа. Пустой — вход без ключа.
       - ACCESS_KEY=${ACCESS_KEY:-changeme}
+      # IP компа в сети — для QR на странице «Подключение». Ставит start.ps1; пустой — берётся из адреса страницы.
+      - LAN_IP=${LAN_IP:-}
       # Бесплатный автоперевод описаний на русский — сервис libretranslate ниже (без ключей, работает офлайн).
       - LIBRETRANSLATE_URL=http://libretranslate:5000
       # ИИ-подсказки текста (Gemini): ключ берётся из файла .env рядом с этим файлом. Пустой — подсказки выключены.
