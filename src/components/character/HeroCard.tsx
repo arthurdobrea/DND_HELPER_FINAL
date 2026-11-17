@@ -5,7 +5,7 @@ import { PresenceCard } from "@/components/character/PresenceCard";
 import { ageMs } from "@/lib/presence";
 import { PinButton } from "@/components/PinButton";
 import { toggleEntry } from "@/app/actions";
-import { GiveToHero } from "@/components/character/GiveItem";
+import { GiveCreature, GiveToHero } from "@/components/character/GiveItem";
 
 /** Карточка героя игрока: имя, хиты, КД и прочее; бабл связи и тема игрока (PresenceCard). */
 export function HeroCard({ id, s, pinned }: { id: number; s: CharacterSheet; pinned: boolean }) {

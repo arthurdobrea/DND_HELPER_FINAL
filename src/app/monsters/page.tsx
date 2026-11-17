@@ -24,6 +24,8 @@ import { Check, Chips, Field, Select, TriState, toOptions } from "@/components/f
 import { CatalogLayout } from "@/components/CatalogLayout";
 import { CatalogSync } from "@/components/CatalogSync";
 import { NotesEditor } from "@/components/NotesEditor";
+import { GiveItemMenu } from "@/components/character/GiveItem";
+import { appHeroes } from "@/lib/heroes";
 import { PinButton } from "@/components/PinButton";
 import { StatBlock } from "@/components/StatBlock";
 import { TranslationBar } from "@/components/translate/TranslationBar";
@@ -269,6 +271,7 @@ export default async function MonstersPage({ searchParams }: PageProps<"/monster
           <div className="mt-2 whitespace-pre-line">{loc.entry.desc.replace(/\\n/g, "\n")}</div>
         </details>
       )}
+      <GiveItemMenu itemKey={openKey} heroes={appHeroes(world.id)} creature label="🐾 Дать герою" />
       <PinButton pinned={pinned.has(openKey)} toggle={toggleEntry.bind(null, "monster", openKey)} />
       {pin && <NotesEditor key={pin.notes} initial={pin.notes} save={saveEntryNotes.bind(null, pin.id)} />}
     </div>

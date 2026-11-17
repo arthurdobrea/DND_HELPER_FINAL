@@ -11,6 +11,7 @@ import { normalizeSheet, type CharacterSheet } from "@/lib/character";
 import { CORS_HEADERS } from "@/lib/sync-cors";
 import { ordered, sideOf, type Battle } from "@/lib/battle";
 import { readGifts } from "@/lib/gifts";
+import { readCreatureGifts } from "@/lib/creature-gifts";
 
 export { CORS_HEADERS, SYNC_KEY_HEADER, SYNC_CLIENT_HEADER } from "@/lib/sync-cors";
 
@@ -40,6 +41,8 @@ export function pcView(row: { id: number; worldId: number; name: string; data: s
     sheet: normalizeSheet(JSON.parse(row.data)),
     /** Вещи от мастера, которые приложение ещё не забрало. */
     gifts: readGifts(row.id),
+    /** Звери от мастера, которых приложение ещё не забрало. */
+    creatures: readCreatureGifts(row.id),
   };
 }
 
