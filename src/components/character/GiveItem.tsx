@@ -79,8 +79,8 @@ export function GiveToHero({ heroId, heroName }: { heroId: number; heroName: str
 }
 
 /** «🎁 Дать герою ▾» у вещи каталога или добычи: выбрать героя из приложения. onGiven — вещь ушла этому герою. */
-export function GiveItemMenu({ itemKey, heroes, onGiven, label = "🎁 Дать герою" }: {
-  itemKey: string; heroes: HeroPick[]; onGiven?: (hero: HeroPick) => void; label?: string;
+export function GiveItemMenu({ itemKey, heroes, onGiven, label = "🎁 Дать герою", creature = false }: {
+  itemKey: string; heroes: HeroPick[]; onGiven?: (hero: HeroPick) => void; label?: string; creature?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
@@ -88,7 +88,7 @@ export function GiveItemMenu({ itemKey, heroes, onGiven, label = "🎁 Дать 
   if (heroes.length === 0) return null;
   const give = (h: HeroPick) =>
     start(async () => {
-      const err = await giveItem(h.id, { key: itemKey, qty: 1 });
+      const err = creature ? await giveCreature(h.id, itemKey) : await giveItem(h.id, { key: itemKey, qty: 1 });
       setMsg(err ?? `Отдано: ${h.name}`);
       if (!err) { setOpen(false); onGiven?.(h); }
     });
