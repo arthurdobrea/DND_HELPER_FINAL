@@ -25,6 +25,11 @@ export function notifyHero(hero: number) {
   for (const p of g.__dndLive?.peers ?? []) if (p.hero === null || p.hero === hero) send(p, { type: "changed", hero });
 }
 
+/** Реакция игрока (эмодзи или короткая фраза): слышат только страницы мастера. */
+export function notifyReaction(name: string, text: string) {
+  for (const p of g.__dndLive?.peers ?? []) if (p.hero === null) send(p, { type: "reaction", name, text });
+}
+
 /** Бой поменялся: слышат все. */
 export function notifyBattle() {
   for (const p of g.__dndLive?.peers ?? []) send(p, { type: "battle" });

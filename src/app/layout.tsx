@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { NavBar } from "@/components/NavBar";
+import { ReactionFloat } from "@/components/ReactionFloat";
 import { getCurrentWorld } from "@/lib/world";
 import { pageMeta } from "@/lib/meta";
 import "./globals.css";
@@ -17,6 +18,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full flex-col font-sans">
         <NavBar worldName={world?.name} />
         <main className="flex flex-1 flex-col">{children}</main>
+        <ReactionFloat />
       </body>
     </html>
   );
