@@ -55,7 +55,7 @@ function CatchView({ c, onBattle, battleBusy }: { c: Catch; onBattle?: () => voi
         <span className="text-sm text-muted">
           {kindIcon(c.kind)} {c.kind === "junk" ? "Мусор" : CATCH_KINDS.find((k) => k.id === c.kind)?.label}
         </span>
-        {c.aiId && <span className="rounded border border-violet-500/50 px-1.5 text-xs text-violet-300" title="Сгенерировано Gemini; править можно в ИИ-кузнице">🔮 ИИ</span>}
+        {c.aiId && <span className="rounded border border-violet-500/50 px-1.5 text-xs text-violet-300" title="Сгенерировано Gemini; править можно в Кузнице">🔮 ИИ</span>}
         {c.value !== null && <span className="text-xs text-muted">бросок {c.value}</span>}
       </div>
       {c.kind === "item" && c.item && <ItemCard i={c.item} />}

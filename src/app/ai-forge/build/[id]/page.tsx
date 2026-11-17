@@ -10,7 +10,7 @@ import { SpellBuilder } from "@/components/ai/SpellBuilder";
 
 export const metadata: Metadata = pageMeta("Сборщик", "🧩");
 
-/** Сборщик записи ИИ-кузницы: предмет или заклинание (существо — в сборщик NPC). id = new — собрать с нуля (?kind=item|spell). */
+/** Сборщик записи Кузницы: предмет или заклинание (существо — в сборщик NPC). id = new — собрать с нуля (?kind=item|spell). */
 export default async function BuildPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ kind?: string }> }) {
   await connection();
   await requireWorld();

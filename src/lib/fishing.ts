@@ -266,7 +266,7 @@ export type Catch = {
   hook?: string;
   monster?: Monster;
   monsterKey?: string;
-  /** Вещь сгенерирована Gemini: id записи ИИ-кузницы (там её можно править). */
+  /** Вещь сгенерирована Gemini: id записи Кузницы (там её можно править). */
   aiId?: number;
 };
 

@@ -117,7 +117,7 @@ const cleanWeights = (w?: Partial<CatchWeights>): CatchWeights => {
 
 /**
  * Собрать улов уровня tier. kind — какой вид (иначе случайно по весам). Предметы и свитки — из каталога
- * (с ИИ их подменяет клиент через ИИ-кузницу). excludeKey — не повторять текущую вещь при перебросе.
+ * (с ИИ их подменяет клиент через Кузницу). excludeKey — не повторять текущую вещь при перебросе.
  */
 export async function fishCatch(input: { tier: TierId; kind?: CatchKind; weights?: Partial<CatchWeights>; value?: number | null; excludeKey?: string }): Promise<Catch> {
   const world = await requireWorld();

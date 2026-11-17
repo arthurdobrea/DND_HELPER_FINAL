@@ -6,7 +6,7 @@ import { requireWorld } from "@/lib/world";
 import { aiHistory } from "@/app/ai-forge-actions";
 import { AiForge } from "@/components/ai/AiForge";
 
-export const metadata: Metadata = pageMeta("ИИ-кузница", "🔮");
+export const metadata: Metadata = pageMeta("Кузница", "🔮");
 
 export default async function AiForgePage({ searchParams }: { searchParams: Promise<{ open?: string }> }) {
   await connection();

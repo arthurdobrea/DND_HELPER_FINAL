@@ -24,7 +24,7 @@ export function geminiEnabled(): boolean {
   return (process.env.GEMINI_API_KEY ?? "").trim() !== "";
 }
 
-type Request = { system: string; prompt: string; /** Модель вместо GEMINI_MODEL (например, «качественная» в ИИ-кузнице). */ model?: string; maxTokens?: number; temperature?: number; /** Ответ строго в JSON (responseMimeType). */ json?: boolean };
+type Request = { system: string; prompt: string; /** Модель вместо GEMINI_MODEL (например, «качественная» в Кузнице). */ model?: string; maxTokens?: number; temperature?: number; /** Ответ строго в JSON (responseMimeType). */ json?: boolean };
 export type Source = { title: string; uri: string };
 export type Generated = { text: string; sources: Source[]; searched: boolean };
 

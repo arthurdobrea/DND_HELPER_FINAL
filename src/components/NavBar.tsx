@@ -16,7 +16,7 @@ const LINKS = [
   { href: "/items", label: "🗡️ Предметы" },
   { href: "/shop", label: "🏺 Магазин" },
   { href: "/fishing", label: "🎣 Рыбалка" },
-  { href: "/ai-forge", label: "🔮 ИИ-кузница" },
+  { href: "/ai-forge", label: "🔮 Кузница" },
   { href: "/maps", label: "🗺️ Карты" },
   { href: "/books", label: "📚 Книги" },
   { href: "/parser", label: "🔍 Парсер" },

@@ -375,7 +375,7 @@ export const fishingStash = sqliteTable("fishing_stash", {
 });
 
 /**
- * ИИ-кузница: всё, что сгенерировал Gemini (монстры, заклинания, предметы). starred — «мои», не удаляются при чистке истории.
+ * Кузница: всё, что сгенерировал Gemini (монстры, заклинания, предметы). starred — «мои», не удаляются при чистке истории.
  * data — JSON сущности ({ kind, draft | spell | item }).
  */
 export const aiCreations = sqliteTable("ai_creations", {

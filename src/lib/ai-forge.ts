@@ -1,5 +1,5 @@
 /**
- * ИИ-кузница: общие типы и проверка того, что вернул Gemini (без серверных зависимостей — нужен и клиенту).
+ * Кузница: общие типы и проверка того, что вернул Gemini (без серверных зависимостей — нужен и клиенту).
  * Монстр приходит черновиком сборщика (ForgeDraft): числа атак и Сл программа пересчитывает сама.
  */
 import type { Item, Spell } from "@/lib/catalog";
@@ -65,7 +65,7 @@ export function sanitizeMonster(raw: unknown): ForgeDraft {
   r.law = String(r.law ?? "").toLowerCase();
   r.moral = String(r.moral ?? "").toLowerCase();
   const d = sanitizeDraft(r);
-  d.baseName = "ИИ-кузница";
+  d.baseName = "Кузница";
   if (!d.name.trim()) d.name = "Безымянное существо";
   return d;
 }
@@ -99,7 +99,7 @@ export function sanitizeSpell(raw: unknown, id: string): Spell {
     area: str(r.area, 120) || null,
     desc,
     higherLevel: str(r.higherLevel, 1500),
-    source: "ИИ-кузница",
+    source: "Кузница",
     sourceKey: "ai",
     system: "5e",
     haystack: `${name} ${desc}`.toLowerCase(),
@@ -150,7 +150,7 @@ export function sanitizeItem(raw: unknown, id: string): Item {
         ? { ac: str(a.ac, 80), category: str(a.category, 30) || "medium", stealthDisadvantage: !!a.stealthDisadvantage, strength: Number.isFinite(Number(a.strength)) && a.strength !== null ? num(a.strength, 0, 30, 0) : null }
         : null,
     desc,
-    source: "ИИ-кузница",
+    source: "Кузница",
     sourceKey: "ai",
     system: "5e",
     haystack: `${name} ${desc}`.toLowerCase(),

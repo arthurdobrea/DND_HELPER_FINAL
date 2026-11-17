@@ -297,7 +297,7 @@ function TemplatePalette({ onPick, replacing }: { onPick: (t: Template) => void;
 
 // ---------- Сборщик ----------
 
-/** aiId — существо из ИИ-кузницы: черновик берётся оттуда (не из браузера) и сохраняется обратно в кузницу. */
+/** aiId — существо из Кузницы: черновик берётся оттуда (не из браузера) и сохраняется обратно в кузницу. */
 export function NpcBuilder({ initial, editId, aiId }: { initial?: ForgeDraft; editId?: number; aiId?: number } = {}) {
   const [d, setD] = useState<ForgeDraft>(() => initial ?? blankDraft());
   const [palTab, setPalTab] = useState<"base" | "tip" | "donor" | "spell" | "tpl">(initial ? "tip" : "base");
@@ -313,7 +313,7 @@ export function NpcBuilder({ initial, editId, aiId }: { initial?: ForgeDraft; ed
   const [pending, start] = useTransition();
   const loaded = useRef(false);
 
-  // Черновик сборщика (общий с ИИ-кузницей) (если не правим готового NPC).
+  // Черновик сборщика (общий с Кузницей) (если не правим готового NPC).
   useEffect(() => {
     if (editId || aiId) {
       loaded.current = true;
@@ -531,7 +531,7 @@ export function NpcBuilder({ initial, editId, aiId }: { initial?: ForgeDraft; ed
     try {
       const r = await aiUpdate(aiId, { kind: "monster", draft: d });
       if (!r.ok) setError(r.error);
-      else setNote("Сохранено в ИИ-кузницу");
+      else setNote("Сохранено в Кузницу");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить");
     } finally {
@@ -971,8 +971,8 @@ export function NpcBuilder({ initial, editId, aiId }: { initial?: ForgeDraft; ed
 
         {error && <p className="text-sm text-red-400">{error}</p>}
         {aiId && (
-          <button type="button" className="btn w-full border-violet-500/60 py-2 text-violet-200" disabled={aiSaving} onClick={() => void saveToForge()} title="Записать изменения обратно в запись ИИ-кузницы">
-            {aiSaving ? "Сохраняю…" : "💾 Сохранить в ИИ-кузницу"}
+          <button type="button" className="btn w-full border-violet-500/60 py-2 text-violet-200" disabled={aiSaving} onClick={() => void saveToForge()} title="Записать изменения обратно в запись Кузницы">
+            {aiSaving ? "Сохраняю…" : "💾 Сохранить в Кузницу"}
           </button>
         )}
         <div className="flex gap-2">

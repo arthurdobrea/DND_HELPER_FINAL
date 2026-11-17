@@ -1,4 +1,4 @@
-/** Инструкции для Gemini в ИИ-кузнице и разбор ответа (только сервер; вынесено из server actions ради проверок). */
+/** Инструкции для Gemini в Кузнице и разбор ответа (только сервер; вынесено из server actions ради проверок). */
 import { AiError } from "@/lib/ai/gemini";
 import type { AiKind, AiOptions } from "@/lib/ai-forge";
 import { CASTING_TIMES, CLASSES, CONDITIONS, DAMAGE_TYPES, ITEM_CATEGORIES, MONSTER_TYPES, RARITIES, SCHOOLS, SIZES } from "@/lib/catalog/labels";

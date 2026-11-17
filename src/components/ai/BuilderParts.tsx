@@ -74,7 +74,7 @@ export function TemplatePalette({ templates, onAdd, title }: { templates: Templa
   );
 }
 
-/** Сохранение в ИИ-кузницу: поверх записи (id) или новой записью. */
+/** Сохранение в Кузницу: поверх записи (id) или новой записью. */
 export function SaveBar({ id, entity }: { id?: number; entity: AiEntity }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -103,7 +103,7 @@ export function SaveBar({ id, entity }: { id?: number; entity: AiEntity }) {
   return (
     <div className="space-y-2">
       <button type="button" className="btn btn-primary w-full py-2.5 text-base" disabled={busy} onClick={() => void save(false)}>
-        {busy ? "Сохраняю…" : "💾 Сохранить в ИИ-кузницу"}
+        {busy ? "Сохраняю…" : "💾 Сохранить в Кузницу"}
       </button>
       {id && (
         <button type="button" className="btn w-full text-sm" disabled={busy} onClick={() => void save(true)}>
@@ -112,7 +112,7 @@ export function SaveBar({ id, entity }: { id?: number; entity: AiEntity }) {
       )}
       {msg && <p className={`text-sm ${msg.ok ? "text-emerald-300" : "text-red-400"}`}>{msg.text}</p>}
       <Link href={id ? `/ai-forge?open=${id}` : "/ai-forge"} className="block text-center text-xs text-muted hover:text-accent">
-        ← в ИИ-кузницу
+        ← в Кузницу
       </Link>
     </div>
   );

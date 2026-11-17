@@ -259,7 +259,7 @@ const FISH_ITEM_RULE: Partial<Record<TierId, string>> = {
 
 const WATER = "Это находка, которую герои выловили удочкой из воды. Описание начни с того, как вещь выглядит после воды, и одной фразой намекни, кому она принадлежала. Вещь должна быть полезной в игре.";
 
-/** Предмет или свиток для рыбалки через Gemini: попадает в историю ИИ-кузницы (там его можно править). */
+/** Предмет или свиток для рыбалки через Gemini: попадает в историю Кузницы (там его можно править). */
 export async function aiCatch(input: { kind: "item" | "spell"; tier: TierId; level?: number }): Promise<{ ok: true; item: AiCreation } | { ok: false; error: string }> {
   const world = await requireWorld();
   if (!geminiEnabled()) return { ok: false, error: "ИИ выключен: добавьте GEMINI_API_KEY в файл .env и перезапустите приложение." };
