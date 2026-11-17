@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { findCatalogItems, giveItem } from "@/app/actions";
+import { findCatalogItems, findCatalogMonsters, giveCreature, giveItem } from "@/app/actions";
 import type { HeroPick } from "@/lib/heroes";
 
 /** «🎁 Дать вещь» на карточке героя: вещь из каталога мастера или своя. Приложение игрока положит её в рюкзак. */
@@ -107,5 +107,46 @@ export function GiveItemMenu({ itemKey, heroes, onGiven, label = "🎁 Дать 
       )}
       {msg && !open && <span className="ml-2 text-xs text-muted">{msg}</span>}
     </span>
+  );
+}
+
+/** «🐾 Дать зверя» на карточке героя: монстр из каталога уходит в «Мои существа» игрока, с атаками и мультиатакой. */
+export function GiveCreature({ heroId, heroName }: { heroId: number; heroName: string }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<{ key: string; name: string; cr: string }[]>([]);
+  const [msg, setMsg] = useState("");
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    if (!open) return;
+    let stale = false;
+    const t = setTimeout(() => findCatalogMonsters(q).then((r) => { if (!stale) setFound(r); }), 250);
+    return () => { stale = true; clearTimeout(t); };
+  }, [q, open]);
+
+  if (!open) return <button className="btn w-full" onClick={() => setOpen(true)}>🐾 Дать зверя</button>;
+
+  const give = (m: { key: string; name: string }) =>
+    start(async () => {
+      const err = await giveCreature(heroId, m.key);
+      setMsg(err ?? `Отдано: ${m.name}. Появится у ${heroName} в «Мои существа» при следующей связи.`);
+    });
+
+  return (
+    <div className="space-y-2 rounded-md border border-border p-2">
+      <div className="flex gap-1">
+        <input className="input w-full" type="search" placeholder="🔍 лев, волк…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <button className="btn text-xs" onClick={() => setOpen(false)} title="Закрыть">✕</button>
+      </div>
+      <div className="max-h-40 space-y-1 overflow-y-auto">
+        {found.map((m) => (
+          <button key={m.key} className="block w-full truncate rounded border border-border px-2 py-1 text-left text-sm" disabled={pending} onClick={() => give(m)}>
+            {m.name} <span className="text-muted">ПО {m.cr}</span>
+          </button>
+        ))}
+      </div>
+      {msg && <p className="text-xs text-muted">{msg}</p>}
+    </div>
   );
 }

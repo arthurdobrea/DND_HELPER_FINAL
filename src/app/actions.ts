@@ -30,6 +30,9 @@ import { resync, type CatalogKind } from "@/lib/catalog/store";
 import { WORLD_COOKIE, findEntry, requireWorld } from "@/lib/world";
 import { findPc } from "@/lib/sync";
 import { addGift, customGift, giftFromItem } from "@/lib/gifts";
+import { addCreatureGift } from "@/lib/creature-gifts";
+import { monsterToCreature } from "@/lib/monster-creature";
+import { resolveMonster } from "@/lib/custom-monsters";
 import { notifyBattle, notifyHero } from "@/lib/live";
 import { applyDamage, applyHeal, emptySheet, initiative, normalizeSheet, type CharacterSheet } from "@/lib/character";
 import { emptyBattle, sanitizeBattle, uid, type Battle, type Combatant, type Loot } from "@/lib/battle";
@@ -891,6 +894,27 @@ export async function giveItem(heroId: number, input: GiveInput): Promise<string
   notifyHero(pc.id);
   revalidatePath("/heroes");
   return null;
+}
+
+/** Мастер даёт зверя герою: монстр из каталога (key) → «Мои существа» у игрока, с атаками и мультиатакой. Ошибка — текст. */
+export async function giveCreature(heroId: number, key: string): Promise<string | null> {
+  const world = await requireWorld();
+  const pc = findPc(Number(heroId));
+  if (!pc || pc.worldId !== world.id) return "Герой не найден";
+  const raw = await resolveMonster(String(key), world.id);
+  if (!raw) return "Зверя нет в каталоге";
+  const creature = monsterToCreature(raw, localize("monster", raw as never, "ru").entry as typeof raw);
+  if (!addCreatureGift(pc.id, creature)) return "У героя уже много неполученных зверей: пусть подключится";
+  notifyHero(pc.id);
+  return null;
+}
+
+/** Поиск зверя в бестиарии для «Дать зверя»: до 12 совпадений по имени. */
+export async function findCatalogMonsters(q: string): Promise<{ key: string; name: string; cr: string }[]> {
+  await requireWorld();
+  const s = String(q ?? "").trim().toLowerCase();
+  if (s.length < 2) return [];
+  return (await getMonsters()).filter((m) => m.name.toLowerCase().includes(s)).slice(0, 12).map((m) => ({ key: m.key, name: m.name, cr: m.crLabel }));
 }
 
 // Индекс имён каталога (русские, если переведены, и английские): строится раз в минуту, а не на каждую букву поиска.
