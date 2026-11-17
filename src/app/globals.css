@@ -114,3 +114,16 @@ body {
   text-decoration-color: #d9a54a;
   text-decoration-thickness: 2px;
 }
+
+/* Плашка реакции игрока: снизу вверх и растворяется (ReactionFloat). */
+@keyframes reaction-rise {
+  0% { opacity: 0; transform: translate(-50%, 20px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -140px); }
+}
+.reaction-pop {
+  animation-name: reaction-rise;
+  animation-timing-function: ease-out;
+  animation-fill-mode: forwards;
+}
