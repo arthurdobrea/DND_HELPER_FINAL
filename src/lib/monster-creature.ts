@@ -60,7 +60,9 @@ function sources(m: Monster, loc: Monster): Src[] {
 function actionOf(s: Src): CreatureAction {
   const desc = clean(s.en.desc);
   const a: CreatureAction = { name: s.name, text: s.text };
-  const bonus = s.en.attack_bonus ?? (/([+-]\d+)\s*to hit/i.exec(desc)?.[1] !== undefined ? Number(/([+-]\d+)\s*to hit/i.exec(desc)![1]) : undefined);
+  const parsed = /([+-]\d+)\s*to hit/i.exec(desc)?.[1];
+  // Open5e ставит attack_bonus: 0 действиям со спасброском (дыхание): атакой считаем, только если в тексте есть бросок атаки.
+  const bonus = s.en.attack_bonus === 0 && parsed === undefined ? undefined : (s.en.attack_bonus ?? (parsed !== undefined ? Number(parsed) : undefined));
   if (bonus !== undefined && !Number.isNaN(bonus)) a.attackBonus = bonus;
   const dmg = /\d+\s*\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*([a-z-]+)\s+damage/i.exec(desc);
   if (s.en.damage_dice) a.dice = s.en.damage_dice.replace(/\s+/g, "") + (s.en.damage_bonus ? (s.en.damage_bonus > 0 ? `+${s.en.damage_bonus}` : `${s.en.damage_bonus}`) : "");
@@ -80,8 +82,10 @@ function multiParts(all: Src[], i: number): CreatureAction["parts"] {
   const parts = all
     .filter((o, j) => j !== i && text.toLowerCase().includes(o.en.name.toLowerCase()))
     .map((o) => {
-      const word = new RegExp(`(\\w+)\\s+${esc(o.en.name)}`, "i").exec(text)?.[1].toLowerCase();
-      return { name: o.name, count: Number(word) || COUNTS[word ?? ""] || 1 };
+      // «two Claw attacks», «two with its claws»: число стоит перед названием, возможно через «with its».
+      const words = [...text.matchAll(new RegExp(`(\\w+)\\s+(?:(?:with|using)\\s+)?(?:(?:its|his|her|their)\\s+)?${esc(o.en.name)}`, "gi"))].map((m) => m[1].toLowerCase());
+      const count = words.map((w) => Number(w) || COUNTS[w]).find(Boolean);
+      return { name: o.name, count: count ?? 1 };
     });
   return parts.length ? parts : undefined;
 }

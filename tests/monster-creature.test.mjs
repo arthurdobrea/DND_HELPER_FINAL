@@ -59,3 +59,28 @@ test("бонусные действия и реакции получают це�
   assert.deepEqual(a.map((x) => x.cost), [undefined, "BONUS", "REACTION"]);
   assert.equal(a[0].parts, undefined);
 });
+
+test("мультиатака «one with its bite and two with its claws»: Claw ×2", () => {
+  const m = {
+    ...base, name: "Dragon",
+    actions: [
+      { name: "Multiattack", desc: "The dragon makes three attacks: one with its bite and two with its claws." },
+      { name: "Bite", desc: "Melee Weapon Attack: +14 to hit, reach 10 ft.", attack_bonus: 14 },
+      { name: "Claw", desc: "Melee Weapon Attack: +14 to hit, reach 5 ft.", attack_bonus: 14 },
+    ],
+  };
+  assert.deepEqual(monsterToCreature(m).actions[0].parts, [{ name: "Bite", count: 1 }, { name: "Claw", count: 2 }]);
+});
+
+test("спасбросок с attack_bonus 0 не становится атакой, а настоящая атака +0 остаётся", () => {
+  const m = {
+    ...base,
+    actions: [
+      { name: "Fire Breath", desc: "The dragon exhales fire. Each creature must make a DC 21 Dexterity saving throw, taking 63 (18d6) fire damage.", attack_bonus: 0 },
+      { name: "Weak Slam", desc: "Melee Weapon Attack: +0 to hit, reach 5 ft. Hit: 3 (1d4 + 0) bludgeoning damage.", attack_bonus: 0 },
+    ],
+  };
+  const [breath, slam] = monsterToCreature(m).actions;
+  assert.equal(breath.attackBonus, undefined);
+  assert.equal(slam.attackBonus, 0);
+});
