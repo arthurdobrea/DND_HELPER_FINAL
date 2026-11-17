@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition, type DragEvent } from "react";
 import { createForgedNpc, translateTexts, updateForgedNpc } from "@/app/forge-actions";
+import { aiUpdate } from "@/app/ai-forge-actions";
 import { ABILITY_KEYS, SKILLS, mod } from "@/lib/character";
 import { ALIGN_LAW, ALIGN_MORAL, DAMAGE_TYPES, MONSTER_CONDITIONS, MONSTER_TYPES, SIZES } from "@/lib/catalog/labels";
 import { CR_LIST, crText, estimateCr, profBonus } from "@/lib/cr";
@@ -296,7 +297,8 @@ function TemplatePalette({ onPick, replacing }: { onPick: (t: Template) => void;
 
 // ---------- Сборщик ----------
 
-export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?: number } = {}) {
+/** aiId — существо из ИИ-кузницы: черновик берётся оттуда (не из браузера) и сохраняется обратно в кузницу. */
+export function NpcBuilder({ initial, editId, aiId }: { initial?: ForgeDraft; editId?: number; aiId?: number } = {}) {
   const [d, setD] = useState<ForgeDraft>(() => initial ?? blankDraft());
   const [palTab, setPalTab] = useState<"base" | "tip" | "donor" | "spell" | "tpl">(initial ? "tip" : "base");
   const [rightTab, setRightTab] = useState<"inspect" | "stat">("inspect");
@@ -313,7 +315,7 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
 
   // Черновик сборщика (общий с ИИ-кузницей) (если не правим готового NPC).
   useEffect(() => {
-    if (editId) {
+    if (editId || aiId) {
       loaded.current = true;
       return;
     }
@@ -323,16 +325,16 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
       if (raw) setD({ ...blankDraft(), ...(JSON.parse(raw) as ForgeDraft) });
     } catch {}
     loaded.current = true;
-  }, [editId]);
+  }, [editId, aiId]);
   useEffect(() => {
-    if (!loaded.current || editId) return;
+    if (!loaded.current || editId || aiId) return;
     const t = setTimeout(() => {
       try {
         localStorage.setItem(STORE_KEY, JSON.stringify(d));
       } catch {}
     }, 400);
     return () => clearTimeout(t);
-  }, [d, editId]);
+  }, [d, editId, aiId]);
 
   const set = (patch: Partial<ForgeDraft>) => setD((p) => ({ ...p, ...patch }));
   const monster = useMemo(() => buildMonster(d), [d]);
@@ -521,6 +523,21 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
   }
 
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [aiSaving, setAiSaving] = useState(false);
+  async function saveToForge() {
+    if (!aiId) return;
+    setError(null);
+    setAiSaving(true);
+    try {
+      const r = await aiUpdate(aiId, { kind: "monster", draft: d });
+      if (!r.ok) setError(r.error);
+      else setNote("Сохранено в ИИ-кузницу");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сохранить");
+    } finally {
+      setAiSaving(false);
+    }
+  }
   async function exportPdf() {
     setError(null);
     setPdfBusy(true);
@@ -568,7 +585,7 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
             <button type="button" className="btn text-sm" onClick={() => setPalTab("base")} title="Выбрать другую основу">
               🧬 Основа: <b>{d.baseName || "с нуля"}</b>
             </button>
-            {!editId && (
+            {!editId && !aiId && (
               <button
                 type="button"
                 className="btn px-2 py-1 text-xs"
@@ -953,6 +970,11 @@ export function NpcBuilder({ initial, editId }: { initial?: ForgeDraft; editId?:
         )}
 
         {error && <p className="text-sm text-red-400">{error}</p>}
+        {aiId && (
+          <button type="button" className="btn w-full border-violet-500/60 py-2 text-violet-200" disabled={aiSaving} onClick={() => void saveToForge()} title="Записать изменения обратно в запись ИИ-кузницы">
+            {aiSaving ? "Сохраняю…" : "💾 Сохранить в ИИ-кузницу"}
+          </button>
+        )}
         <div className="flex gap-2">
           <button type="button" className="btn btn-primary flex-1 py-2.5 text-base" disabled={pending} onClick={submit}>
             {pending ? "Сохраняю…" : editId ? "💾 Сохранить изменения" : "🎭 Создать NPC"}

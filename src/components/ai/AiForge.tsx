@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { aiDelete, aiGenerate, aiHistory, aiItemToShop, aiRefine, aiStar, aiUpdate, type AiResult } from "@/app/ai-forge-actions";
 import { createForgedNpc } from "@/app/forge-actions";
 import { stashCatch } from "@/app/fishing-actions";
 import { AI_KINDS, defaultOptions, entitySubtitle, fishingTierOf, type AiCreation, type AiEntity, type AiKind, type AiOptions, type AiQuality } from "@/lib/ai-forge";
-import { ItemFields, MonsterFields, SpellFields, applyRows, rowsFromDraft, type AbilityRow } from "@/components/ai/AiEditor";
+import { ItemText, MonsterText, SpellText, applyRows, rowsFromDraft, type AbilityRow } from "@/components/ai/AiEditor";
+import Link from "next/link";
 import { CLASSES, ITEM_CATEGORIES, MONSTER_TYPES, RARITIES, SCHOOLS, SIZES } from "@/lib/catalog/labels";
 import { CR_LIST, crText, estimateCr } from "@/lib/cr";
 import { buildMonster, type ForgeDraft } from "@/lib/forge";
@@ -14,7 +14,6 @@ import { TIER_BY_ID } from "@/lib/fishing";
 import { StatBlock } from "@/components/StatBlock";
 import { SpellCard } from "@/components/SpellCard";
 import { ItemCard } from "@/components/ItemCard";
-import { STORE_KEY } from "@/components/npc/NpcParts";
 
 const PLACEHOLDER: Record<AiKind, string> = {
   monster: "Болотная ведьма-утопленница для группы 5 уровня. Тянет героев под воду, насылает гниль, боится огня…",
@@ -37,15 +36,14 @@ const options = (map: Record<string, string>) =>
 const fileName = (s: string) => `${(s.trim() || "NPC").replace(/[\\/:*?"<>|]+/g, "_")}.pdf`;
 const isRedirect = (e: unknown) => !!e && typeof e === "object" && "digest" in e && String((e as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT");
 
-export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreation[]; enabled: boolean }) {
-  const router = useRouter();
-  const [kind, setKind] = useState<AiKind>("monster");
+export function AiForge({ initialHistory, enabled, openId }: { initialHistory: AiCreation[]; enabled: boolean; openId?: number }) {
+  const [kind, setKind] = useState<AiKind>(() => initialHistory.find((c) => c.id === openId)?.kind ?? "monster");
   const [prompts, setPrompts] = useState<Record<AiKind, string>>({ monster: "", spell: "", item: "" });
   const [opts, setOpts] = useState<AiOptions>(defaultOptions);
   const [count, setCount] = useState(1);
   const [quality, setQuality] = useState<AiQuality>("fast");
   const [variants, setVariants] = useState<AiCreation[]>([]);
-  const [current, setCurrent] = useState<AiCreation | null>(null);
+  const [current, setCurrent] = useState<AiCreation | null>(() => initialHistory.find((c) => c.id === openId) ?? null);
   const [refine, setRefine] = useState("");
   const [history, setHistory] = useState<AiCreation[]>(initialHistory);
   const [histFilter, setHistFilter] = useState<"all" | "star" | AiKind>("all");
@@ -147,18 +145,6 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
     if (current?.id === c.id) open(null);
   }
 
-  function toBuilder(d: ForgeDraft) {
-    try {
-      const prev = localStorage.getItem(STORE_KEY);
-      if (prev && prev.length > 400 && !confirm("В сборщике уже есть черновик. Заменить его этим существом?")) return;
-      localStorage.setItem(STORE_KEY, JSON.stringify(d));
-    } catch {
-      setError("Браузер не дал сохранить черновик (хранилище недоступно).");
-      return;
-    }
-    router.push("/npcs/builder");
-  }
-
   function createNpc(d: ForgeDraft) {
     setError(null);
     start(async () => {
@@ -232,6 +218,19 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
               {k.icon} {k.label}
             </button>
           ))}
+        </div>
+
+        <div className="-mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+          Собрать вручную, без ИИ:
+          <Link href="/npcs/builder" className="hover:text-accent">
+            🐲 существо
+          </Link>
+          <Link href="/ai-forge/build/new?kind=spell" className="hover:text-accent">
+            ✨ заклинание
+          </Link>
+          <Link href="/ai-forge/build/new?kind=item" className="hover:text-accent">
+            🗡️ предмет
+          </Link>
         </div>
 
         {/* ===== Описание и параметры ===== */}
@@ -371,7 +370,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
               {editing && (
                 <div className="card space-y-3 p-4">
                   <div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
-                    <span className="font-display text-lg text-accent">✏️ Правка текста</span>
+                    <span className="font-display text-lg text-accent">✏️ Быстрая правка текста</span>
                     <button type="button" className="btn btn-primary ml-auto px-4" disabled={saving} onClick={() => void saveEdit()}>
                       {saving ? "Сохраняю…" : "💾 Сохранить"}
                     </button>
@@ -379,9 +378,9 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
                       Отмена
                     </button>
                   </div>
-                  {editing.kind === "monster" && <MonsterFields d={editing.draft} rows={rows} onDraft={(d) => setEditing({ kind: "monster", draft: d })} onRows={setRows} />}
-                  {editing.kind === "spell" && <SpellFields s={editing.spell} onChange={(s) => setEditing({ kind: "spell", spell: s })} />}
-                  {editing.kind === "item" && <ItemFields i={editing.item} onChange={(i) => setEditing({ kind: "item", item: i })} />}
+                  {editing.kind === "monster" && <MonsterText d={editing.draft} rows={rows} onDraft={(d) => setEditing({ kind: "monster", draft: d })} onRows={setRows} />}
+                  {editing.kind === "spell" && <SpellText s={editing.spell} onChange={(s) => setEditing({ kind: "spell", spell: s })} />}
+                  {editing.kind === "item" && <ItemText i={editing.item} onChange={(i) => setEditing({ kind: "item", item: i })} />}
                 </div>
               )}
               {!editing && monster && <StatBlock m={monster} lang="ru" />}
@@ -417,8 +416,15 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
                 🔄 Другой вариант
               </button>
               <button type="button" className={`btn w-full ${editing ? "border-accent text-accent" : ""}`} disabled={!!busy || saving} onClick={() => (editing ? stopEdit() : startEdit())} title="Править всё вручную: поля и текст способностей, без сборщика">
-                {editing ? "✕ Закрыть правку" : "📝 Править текст"}
+                {editing ? "✕ Закрыть правку" : "✏️ Править текст"}
               </button>
+              <Link
+                href={current.kind === "monster" ? `/npcs/builder?ai=${current.id}` : `/ai-forge/build/${current.id}`}
+                className="btn btn-primary block w-full text-center"
+                title="Пересобрать: статы, способности, блоки свойств — с сохранением обратно в кузницу"
+              >
+                🧩 В сборщик
+              </Link>
               <div className="card space-y-2 p-2">
                 <textarea
                   value={refine}
@@ -453,10 +459,7 @@ export function AiForge({ initialHistory, enabled }: { initialHistory: AiCreatio
 
               {draft && (
                 <>
-                  <button type="button" className="btn w-full" onClick={() => toBuilder(draft)}>
-                    🧩 В сборщик
-                  </button>
-                  <button type="button" className="btn btn-primary w-full" disabled={pending} onClick={() => createNpc(draft)}>
+                  <button type="button" className="btn w-full" disabled={pending} onClick={() => createNpc(draft)}>
                     {pending ? "Создаю…" : "🎭 Создать NPC"}
                   </button>
                   <button type="button" className="btn w-full" onClick={() => void pdf(draft)}>

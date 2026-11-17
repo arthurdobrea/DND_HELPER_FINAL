@@ -151,6 +151,27 @@ export async function aiRefine(input: { id: number; instruction: string; quality
   }
 }
 
+/** Одна запись кузницы текущего мира (для сборщиков). */
+export async function aiGet(id: number): Promise<AiCreation | null> {
+  const world = await requireWorld();
+  const row = getDb()
+    .select()
+    .from(schema.aiCreations)
+    .where(and(eq(schema.aiCreations.id, Number(id)), eq(schema.aiCreations.worldId, world.id)))
+    .get();
+  return row ? toCreation(row) : null;
+}
+
+/** Сохранить сущность как новую запись кузницы (копия или созданное с нуля в сборщике). */
+export async function aiSaveNew(entity: AiEntity, prompt = "🧩 Сборщик"): Promise<{ ok: true; item: AiCreation } | { ok: false; error: string }> {
+  const world = await requireWorld();
+  const kind = entity?.kind;
+  if (kind !== "monster" && kind !== "spell" && kind !== "item") return { ok: false, error: "Неизвестный тип" };
+  const raw = kind === "monster" ? (entity as { draft: unknown }).draft : kind === "spell" ? (entity as { spell: unknown }).spell : (entity as { item: unknown }).item;
+  const [item] = store(world.id, kind, String(prompt).slice(0, 200), [raw]);
+  return { ok: true, item };
+}
+
 export async function aiHistory(): Promise<AiCreation[]> {
   const world = await requireWorld();
   return getDb()
